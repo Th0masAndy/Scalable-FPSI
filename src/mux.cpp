@@ -77,8 +77,8 @@ void MuxSender::muxA(std::vector<u8> &choices, std::vector<u64> &v0, std::vector
 
     BitVector b0(choices.data(), num);
 
-    coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
-    coproto::sync_wait(recver->genSilentBaseOts(*prng, *socket));
+    // coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
+    // coproto::sync_wait(recver->genSilentBaseOts(*prng, *socket));
 
     std::vector<std::array<block, 2>> messages(num);
     coproto::sync_wait(sender->send(messages, *prng, *socket));
@@ -170,8 +170,8 @@ void MuxRecver::muxA(std::vector<u8> &choices, std::vector<u64> &v1, std::vector
 
     BitVector b1(choices.data(), num);
 
-    coproto::sync_wait(recver->genSilentBaseOts(*prng, *socket));
-    coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
+    // coproto::sync_wait(recver->genSilentBaseOts(*prng, *socket));
+    // coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
 
     std::vector<block> message(num);
     coproto::sync_wait(recver->receive(b1, message, *prng, *socket));

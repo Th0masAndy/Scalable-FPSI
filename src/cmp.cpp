@@ -52,7 +52,7 @@
 
 void NcoOTSender::send(u8 **messages, Socket &chl)
 {
-    coproto::sync_wait(mOt->genSilentBaseOts(*prng, chl));
+    // coproto::sync_wait(mOt->genSilentBaseOts(*prng, chl));
 
     std::vector<std::array<block, 2>> otMessages(mNum * 4);
 
@@ -78,7 +78,7 @@ void NcoOTSender::send(u8 **messages, Socket &chl)
 
 void NcoOTRecver::recv(u8 *outs, u8 *choices, Socket &chl)
 {
-    coproto::sync_wait(mOt->genSilentBaseOts(*prng, chl));
+    // coproto::sync_wait(mOt->genSilentBaseOts(*prng, chl));
 
     std::vector<block> otMessages(mNum * 4);
 

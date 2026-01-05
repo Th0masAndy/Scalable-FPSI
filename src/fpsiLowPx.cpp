@@ -42,6 +42,16 @@ void normL2(
     int bytesLen,
     std::array<coproto::AsioSocket, 2> &chl);
 
+void normL0(
+    oc::span<u64> x,
+    oc::span<u64> y,
+    std::vector<u8> &resBits0,
+    std::vector<u8> &resBits1,
+    u64 d,
+    int delta,
+    int bytesLen,
+    std::array<coproto::AsioSocket, 2> &chl);
+
 void preProcessPrefix(std::vector<std::vector<u64>> &inputs, std::vector<block> &listKey, std::vector<block> &listVal, std::vector<block> &r_R, int delta)
 {
     PRNG prng(oc::sysRandomSeed());
@@ -160,7 +170,7 @@ void fpsiLowPx(const oc::CLP &cmd)
     sendThr.join();
 
     time.setTimePoint("first OPPRF done");
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) / 1024 / 1024 << " MB" << std::endl;
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
 
     std::thread recvThrReverse([&]() {
         std::vector<block> inputKeys(g.size());
@@ -199,7 +209,7 @@ void fpsiLowPx(const oc::CLP &cmd)
     sendThrReverse.join();
 
     time.setTimePoint("second OPPRF done");
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) / 1024 / 1024 << " MB" << std::endl;
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
 
     std::thread sendMaskThr([&]() {
         PRNG prng;
@@ -261,7 +271,7 @@ void fpsiLowPx(const oc::CLP &cmd)
 
     // std::cout << time << std::endl;
 
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) / 1024 / 1024 << " MB" << std::endl;
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
     std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() / double(1000 * 1000) << " seconds" << std::endl;
 }
 
@@ -446,6 +456,8 @@ void fpsiLowLpPx(const oc::CLP &cmd)
         normL1(oc::span<u64>(x.data(), x.size()), oc::span<u64>(y.data(), y.size()), resBits0, resBits1, d, delta, bytesLen, socket);
     } else if (lp == 2) {
         normL2(oc::span<u64>(x.data(), x.size()), oc::span<u64>(y.data(), y.size()), resBits0, resBits1, d, delta, bytesLen, socket);
+    } else if (lp == 0) {
+        normL0(oc::span<u64>(x.data(), x.size()), oc::span<u64>(y.data(), y.size()), resBits0, resBits1, d, delta, bytesLen, socket);
     } else {
         throw std::runtime_error("lp type not supported");
     }
@@ -591,8 +603,109 @@ void fpsiLowLpPx(const oc::CLP &cmd)
 
     // std::cout << time << std::endl;
 
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) / 1024 / 1024 << " MB" << std::endl;
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
     std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() / double(1000 * 1000) << " seconds" << std::endl;
+}
+
+void normL0(
+    oc::span<u64> x,
+    oc::span<u64> y,
+    std::vector<u8> &resBits0,
+    std::vector<u8> &resBits1,
+    u64 d,
+    int delta,
+    int bytesLen,
+    std::array<coproto::AsioSocket, 2> &chl)
+{
+    int bitsLen = bytesLen * 8;
+    int extBitsLen = bitsLen + static_cast<int>(std::ceil(std::log2(d)));
+
+    auto n = x.size() / d;
+
+    std::thread cmpSendThr([&]() {
+        MillionaireProtocolSender sender(x.size(), bitsLen);
+
+        std::vector<u8> cmpShare(x.size());
+        sender.compare(cmpShare.data(), x.data(), chl[1]);
+
+        MuxSender mux(x.size(), &chl[1]);
+
+        std::vector<u64> res(x.size());
+        std::vector<u64> x_vec(x.begin(), x.end());
+
+        mux.muxA(cmpShare, x_vec, res, bitsLen);
+
+        std::vector<u64> abs(x.size());
+        for (u64 i = 0; i < abs.size(); ++i) {
+            abs[i] = x[i] - 2 * res[i];
+        }
+
+        std::vector<u64> dis_max(n, 0);
+
+        MillionaireProtocolSender sender2(n, bitsLen);
+        MuxSender mux2(n, &chl[1]);
+
+        for (u64 i = 0; i < d; i++) {
+            std::vector<u8> compare_res(n);
+            std::vector<u64> curr(n, 0);
+            for (u64 j = 0; j < n; ++j) {
+                curr[j] = abs[j * d + i] - dis_max[j];
+            }
+            sender2.compare(compare_res.data(), curr.data(), chl[1]);
+            mux2.muxA(compare_res, curr, curr, bitsLen);
+            for (u64 j = 0; j < n; ++j) {
+                dis_max[j] += curr[j];
+            }
+        }
+
+        sender2.compare(resBits1.data(), dis_max.data(), chl[1]);
+    });
+
+    std::thread cmpRecvThr([&]() {
+        MillionaireProtocolRecver recver(y.size(), bitsLen);
+
+        std::vector<u8> cmpShare(y.size());
+        recver.compare(cmpShare.data(), y.data(), chl[0]);
+
+        MuxRecver mux(y.size(), &chl[0]);
+        std::vector<u64> res(y.size());
+        std::vector<u64> y_vec(y.begin(), y.end());
+
+        for (u64 i = 0; i < y_vec.size(); ++i) {
+            y_vec[i] = -y_vec[i];
+        }
+
+        mux.muxA(cmpShare, y_vec, res, bitsLen);
+
+        std::vector<u64> abs(y.size());
+
+        for (u64 i = 0; i < abs.size(); ++i) {
+            abs[i] = y[i] - 2 * res[i];
+        }
+
+        std::vector<u64> dis_max(n, 0);
+
+        MillionaireProtocolRecver recver2(n, bitsLen);
+        MuxRecver mux2(n, &chl[0]);
+
+        for (u64 i = 0; i < d; i++) {
+            std::vector<u8> compare_res(n);
+            std::vector<u64> curr(n, 0);
+            for (u64 j = 0; j < n; ++j) {
+                curr[j] = abs[j * d + i] - dis_max[j];
+            }
+            recver2.compare(compare_res.data(), curr.data(), chl[0]);
+            mux2.muxA(compare_res, curr, curr, bitsLen);
+            for (u64 j = 0; j < n; ++j) {
+                dis_max[j] += curr[j];
+            }
+        }
+
+        recver2.compare(resBits0.data(), dis_max.data(), chl[0]);
+    });
+
+    cmpSendThr.join();
+    cmpRecvThr.join();
 }
 
 void normL1(

@@ -176,6 +176,6 @@ void bp25High(const oc::CLP &cmd)
 
     std::cout << time << std::endl;
 
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) / 1024 / 1024 << " MB" << std::endl;
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
     std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() / double(1000 * 1000) << " seconds" << std::endl;
 }

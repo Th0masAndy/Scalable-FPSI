@@ -1,7 +1,10 @@
+#include <cmath>
 #include <coproto/Socket/AsioSocket.h>
 #include <coproto/Socket/LocalAsyncSock.h>
 #include <cryptoTools/Common/CLP.h>
+#include <cryptoTools/Common/Defines.h>
 #include <cryptoTools/Common/block.h>
+#include <cstdlib>
 #include <macoro/sync_wait.h>
 #include <thread>
 #include <vector>
@@ -30,7 +33,7 @@ void sampleDataBp25(std::vector<std::vector<u64>> &sendSet, std::vector<std::vec
     }
 }
 
-void bp25Px(const oc::CLP &cmd)
+void bp25LowPx(const oc::CLP &cmd)
 {
     u64 n = cmd.getOr("n", 1ull << cmd.getOr("nn", 10));
     size_t d = cmd.getOr("d", 2);
@@ -239,6 +242,190 @@ void bp25Px(const oc::CLP &cmd)
 
     std::cout << time << std::endl;
 
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) / 1024 / 1024 << " MB" << std::endl;
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() / double(1000 * 1000) << " seconds" << std::endl;
+}
+
+void bp25LowLpPx(const oc::CLP &cmd)
+{
+    u64 n = cmd.getOr("n", 1ull << cmd.getOr("nn", 10));
+    size_t d = cmd.getOr("d", 2);
+    int delta = cmd.getOr("delta", 2);
+
+    int verbose = cmd.getOr("v", 0);
+    int lp = cmd.getOr("p", 1);
+    int delta_p = std::pow(delta, lp);
+
+    int numTry = cmd.getOr("try", 1);
+
+    int prefixNum = static_cast<int>(std::ceil(std::log2(delta * 2 + 1)));
+    int prefixLen = static_cast<int>(std::floor(std::log2(delta * 2 + 1))) + 1;
+    int prefixLenIfmat = static_cast<int>(std::ceil(std::log2(delta_p + 1)));
+
+    int interSize = cmd.getOr("nn", 4);
+
+    PRNG prng(sysRandomSeed());
+    std::vector<std::vector<u64>> recvSet;
+    std::vector<block> recvListKey;
+    std::vector<block> recvListVal;
+    std::vector<u64> rand_R(n * (1 << d), 0);
+    std::vector<block> rand_R_prefix;
+    std::vector<block> g(n * d * (1 << d));
+    std::vector<block> s_R(n * d * (1 << d));
+    prng.get(s_R.data(), s_R.size());
+
+    std::vector<std::vector<u64>> sendSet;
+    std::vector<block> sendListKey;
+    std::vector<block> sendListVal;
+    std::vector<u64> rand_S(n, 0);
+    std::vector<block> rand_S_prefix;
+    std::vector<u64> r_S(n * d);
+    prng.get(r_S.data(), r_S.size());
+    for (int i = 0; i < n; i++) {
+        u64 sum = 0;
+        for (int j = 0; j < d; j++) {
+            sum += r_S[i * d + j];
+        }
+        rand_S[i] = sum; // 64 leading zero bits
+    }
+
+    sampleDataBp25(sendSet, recvSet, delta, n, d, prng);
+
+    oc::Timer time;
+    time.setTimePoint("begin");
+
+    for (size_t i = 0; i < recvSet.size(); i++) {
+        auto neighbors = neigh(recvSet[i], delta);
+        for (auto neighbor : neighbors) {
+            for (int j = 0; j < d; j++) {
+                recvListKey.push_back(blake3_hash(neighbor, j, recvSet[i][j]));
+            }
+        }
+    }
+
+    for (size_t i = 0; i < sendSet.size(); i++) {
+        for (int j = 0; j < d; j++) {
+            for (u64 k = sendSet[i][j] - delta; k <= sendSet[i][j] + delta; k++) {
+                sendListKey.push_back(blake3_hash(cell(sendSet[i], 2 * delta), j, k));
+                if (lp == 1) {
+                    sendListVal.push_back(block(0, r_S[i * d + j] + std::abs((i64)(k - sendSet[i][j]))));
+                } else if (lp == 2) {
+                    sendListVal.push_back(block(0, r_S[i * d + j] + (i64)(k - sendSet[i][j]) * (i64)(k - sendSet[i][j])));
+                } else {
+                    throw std::runtime_error("unsupported lp");
+                }
+            }
+        }
+    }
+
+    while (sendListKey.size() < n * d * (2 * delta + 1)) {
+        sendListKey.push_back(prng.get<block>());
+        sendListVal.push_back(prng.get<block>());
+    }
+
+    auto s = time.setTimePoint("preprocess done");
+
+    auto socket = coproto::AsioSocket::makePair();
+
+    std::thread recvThr([&]() {
+        OpprfRevcer recver(n * d * (1 << d), n * d * (2 * delta + 1));
+        recver.setTimer(time);
+        recver.recv(recvListKey, g, socket[0]);
+    });
+
+    std::thread sendThr([&]() {
+        OpprfSender sender(n * d * (1 << d), n * d * (2 * delta + 1));
+        sender.setTimer(time);
+        sender.send(sendListKey, sendListVal, socket[1]);
+    });
+
+    recvThr.join();
+    sendThr.join();
+
+    time.setTimePoint("first OPPRF done");
+
+    std::thread sendMaskThr([&]() {
+        PRNG prng(sysRandomSeed());
+        auto len = d * sizeof(u64);
+        auto numBlocks = (len + sizeof(block) - 1) / sizeof(block);
+
+        std::vector<u8> buffer(len * prefixLenIfmat * n);
+        for (int i = 0; i < n; i++) {
+            auto prefixes = getIntervalPrefix(rand_S[i], rand_S[i] + delta_p);
+            for (auto prefix : prefixes) {
+                rand_S_prefix.push_back(prefix);
+            }
+            for (int i = 0; i < prefixLenIfmat - prefixes.size(); i++) {
+                rand_S_prefix.push_back(prng.get<block>());
+            }
+
+            for (auto p = 0; p < prefixLenIfmat; p++) {
+                prng.SetSeed(rand_S_prefix[p], numBlocks);
+                std::vector<u8> tmp(len);
+                prng.get(tmp.data(), len);
+                for (int j = 0; j < len; j++) {
+                    buffer[(i * prefixLenIfmat + p) * len + j] = tmp[j] ^ ((u8 *)&sendSet[i][0])[j];
+                }
+            }
+        }
+
+        Hash(rand_S_prefix);
+
+        coproto::sync_wait(socket[1].send(buffer));
+        coproto::sync_wait(socket[1].send(rand_S_prefix));
+    });
+
+    std::thread recvMaskThr([&]() {
+        PRNG prng(sysRandomSeed());
+        auto len = d * sizeof(u64);
+        auto numBlocks = (len + sizeof(block) - 1) / sizeof(block);
+        std::vector<block> rand_S_prefix(n * prefixLenIfmat, ZeroBlock);
+
+        std::vector<u8> buffer(len * prefixLenIfmat * n);
+        coproto::sync_wait(socket[0].recv(buffer));
+        coproto::sync_wait(socket[0].recv(rand_S_prefix));
+
+        for (int i = 0; i < rand_R.size(); i++) {
+            for (int j = 0; j < d; j++) {
+                rand_R[i] += low(g[i * d + j]);
+            }
+        }
+
+        for (auto v : rand_R) {
+            auto prefixes = getPrefix(v, prefixLenIfmat);
+            for (auto prefix : prefixes) {
+                rand_R_prefix.push_back(prefix);
+            }
+        }
+
+        Hash(rand_R_prefix);
+
+        auto map = google::dense_hash_map<block, u64, NoHash>{};
+        map.resize(rand_R_prefix.size());
+        map.set_empty_key(oc::ZeroBlock);
+        for (auto i = 0; i < rand_R_prefix.size(); i++) {
+            map.insert({ rand_R_prefix[i], i });
+        }
+
+        for (auto i = 0; i < rand_S_prefix.size(); i++) {
+            if (map.find(rand_S_prefix[i]) != map.end()) {
+                std::vector<u8> tmp(len);
+                prng.SetSeed(rand_S_prefix[i], numBlocks);
+                prng.get(tmp.data(), len);
+                for (int j = 0; j < len; j++) {
+                    tmp[j] ^= buffer[i * len + j];
+                }
+            }
+        }
+    });
+
+    sendMaskThr.join();
+    recvMaskThr.join();
+
+    auto e = time.setTimePoint("wLPSI done");
+
+    // std::cout << time << std::endl;
+
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
     std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() / double(1000 * 1000) << " seconds" << std::endl;
 }
