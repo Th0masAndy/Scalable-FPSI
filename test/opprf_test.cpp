@@ -1,4 +1,16 @@
+#include <coproto/Common/macoro.h>
+#include <coproto/Socket/AsioSocket.h>
+#include <coproto/Socket/Socket.h>
+#include <cryptoTools/Common/BitVector.h>
+#include <cryptoTools/Common/Defines.h>
+#include <cryptoTools/Common/Timer.h>
+#include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
+#include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
+#include <thread>
+#include <vector>
+#include "cmp.h"
 #include "opprf.h"
+#include "proto.h"
 
 void opprf_test()
 {
@@ -30,4 +42,50 @@ void opprf_test()
             throw std::runtime_error("opprf test error");
         }
     }
+}
+
+void cmp_test()
+{
+    u64 n = 128 + (1 << 14);
+
+    MillionaireProtocolRecver recver(n, 64, 4);
+    MillionaireProtocolSender sender(n, 64, 4);
+
+    auto socket = coproto::AsioSocket::makePair();
+
+    oc::PRNG prng(oc::sysRandomSeed());
+
+    std::vector<u64> data0(n);
+    std::vector<u64> data1(n);
+    std::vector<u8> outs0(n);
+    std::vector<u8> outs1(n);
+
+    for (u64 i = 0; i < n; ++i) {
+        data0[i] = prng.get<u64>();
+        data1[i] = prng.get<u64>();
+    }
+
+    oc::Timer time;
+    auto s = time.setTimePoint("begin cmp");
+
+    std::thread recvThr([&]() { recver.compare(outs0.data(), data0.data(), socket[0]); });
+
+    std::thread sendThr([&]() { sender.compare(outs1.data(), data1.data(), socket[1]); });
+
+    recvThr.join();
+    sendThr.join();
+
+    auto e = time.setTimePoint("end cmp");
+
+    int correct = 0;
+    for (u64 i = 0; i < n; ++i) {
+        bool gt = data1[i] > data0[i];
+        if (gt == ((outs1[i] ^ outs0[i]) & 1))
+            correct++;
+    }
+    std::cout << "correct: " << correct << " / " << n << std::endl;
+
+    auto comm = socket[0].bytesReceived() + socket[0].bytesSent();
+    auto comp = std::chrono::duration_cast<std::chrono::microseconds>(e - s).count();
+    std::cout << "average: " << comm / (n * 1.0) << " bytes" << " " << comp / (n * 1.0) << " microseconds" << std::endl;
 }

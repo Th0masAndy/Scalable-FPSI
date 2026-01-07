@@ -59,6 +59,7 @@ private:
     SilentOtExtReceiver *mOt;
 };
 
+// this code is from opencheetah and replaced the OT module with libOTe
 // Cheetah's variant MillionaireProtocol when USE_CHEETAH=1
 class MillionaireProtocolSender {
 public:
@@ -79,8 +80,8 @@ public:
 
         configure(bitlength, radix_base);
 
-        otpack = new NcoOTSender(this->num_digits * this->num_cmps);
-        num_triples_round = roundUpTo(this->num_triples * this->num_cmps, 128);
+        otpack = new NcoOTSender(this->num_digits * roundUpTo(this->num_cmps, 8));
+        num_triples_round = roundUpTo(this->num_triples * roundUpTo(this->num_cmps, 8), 128);
         triple_gen = new SilentOtTriple();
         triple_gen->init(1, num_triples_round);
     }
@@ -115,21 +116,47 @@ public:
         delete prng;
     }
 
+    void drelu(uint8_t *res, uint64_t *data, osuCrypto::Socket &chl)
+    {
+        int input_size = num_cmps;
+
+        u8 *carry = new u8[num_cmps];
+        u8 *local_msb = new u8[num_cmps];
+        u64 *values = new u64[num_cmps];
+        u64 mask = (1ull << (l - 1)) - 1;
+
+        for (u64 i = 0; i < num_cmps; i++) {
+            values[i] = data[i] & mask;
+            local_msb[i] = (data[i] >> (l - 1)) & 1;
+        }
+
+        compare(carry, values, chl);
+
+        for (u64 i = 0; i < input_size; i++) {
+            res[i] = carry[i] ^ local_msb[i] ^ 1;
+            res[i] &= 1;
+        }
+
+        delete[] carry;
+        delete[] local_msb;
+        delete[] values;
+    }
+
     void compare(uint8_t *res, uint64_t *data, osuCrypto::Socket &chl, bool greater_than = true, bool equality = false, int radix_base = M)
     {
         coproto::sync_wait(triple_gen->genBaseOts(*prng, chl));
 
-        int old_num_cmps = num_cmps;
+        int origin_num_cmps = num_cmps;
         // num_cmps should be a multiple of 8
         num_cmps = ceil(num_cmps / 8.0) * 8;
 
         uint64_t *data_ext;
-        if (old_num_cmps == num_cmps)
+        if (origin_num_cmps == num_cmps)
             data_ext = data;
         else {
             data_ext = new uint64_t[num_cmps];
-            memcpy(data_ext, data, old_num_cmps * sizeof(uint64_t));
-            memset(data_ext + old_num_cmps, 0, (num_cmps - old_num_cmps) * sizeof(uint64_t));
+            memcpy(data_ext, data, origin_num_cmps * sizeof(uint64_t));
+            memset(data_ext + origin_num_cmps, 0, (num_cmps - origin_num_cmps) * sizeof(uint64_t));
         }
 
         uint8_t *digits;       // num_digits * num_cmps
@@ -190,11 +217,11 @@ public:
 
         traverse_and_compute_ANDs(*triple_gen, num_cmps, leaf_res_eq, leaf_res_cmp, chl);
 
-        for (int i = 0; i < old_num_cmps; i++)
+        for (int i = 0; i < origin_num_cmps; i++)
             res[i] = leaf_res_cmp[i];
 
         // Cleanup
-        if (old_num_cmps != num_cmps)
+        if (origin_num_cmps != num_cmps)
             delete[] data_ext;
         delete[] digits;
         delete[] leaf_res_cmp;
@@ -449,8 +476,8 @@ public:
 
         configure(bitlength, radix_base);
 
-        otpack = new NcoOTRecver(this->num_digits * this->num_cmps);
-        num_triples_round = roundUpTo(this->num_triples * this->num_cmps, 128);
+        otpack = new NcoOTRecver(this->num_digits * roundUpTo(this->num_cmps, 8));
+        num_triples_round = roundUpTo(this->num_triples * roundUpTo(this->num_cmps, 8), 128);
         triple_gen = new SilentOtTriple();
         triple_gen->init(0, num_triples_round);
     }
@@ -485,21 +512,48 @@ public:
         delete prng;
     }
 
+    void drelu(uint8_t *res, uint64_t *data, osuCrypto::Socket &chl)
+    {
+        int input_size = num_cmps;
+
+        u8 *carry = new u8[num_cmps];
+        u8 *local_msb = new u8[num_cmps];
+        u64 *values = new u64[num_cmps];
+        u64 mask = (1ull << (l - 1)) - 1;
+
+        for (u64 i = 0; i < num_cmps; i++) {
+            values[i] = data[i] & mask;
+            values[i] = mask - values[i];
+            local_msb[i] = (data[i] >> (l - 1)) & 1;
+        }
+
+        compare(carry, values, chl);
+
+        for (u64 i = 0; i < input_size; i++) {
+            res[i] = carry[i] ^ local_msb[i] ^ 0;
+            res[i] &= 1;
+        }
+
+        delete[] carry;
+        delete[] local_msb;
+        delete[] values;
+    }
+
     void compare(uint8_t *res, uint64_t *data, osuCrypto::Socket &chl, bool greater_than = true, bool equality = false, int radix_base = M)
     {
         coproto::sync_wait(triple_gen->genBaseOts(*prng, chl));
 
-        int old_num_cmps = num_cmps;
+        int origin_num_cmps = num_cmps;
         // num_cmps should be a multiple of 8
         num_cmps = ceil(num_cmps / 8.0) * 8;
 
         uint64_t *data_ext;
-        if (old_num_cmps == num_cmps)
+        if (origin_num_cmps == num_cmps)
             data_ext = data;
         else {
             data_ext = new uint64_t[num_cmps];
-            memcpy(data_ext, data, old_num_cmps * sizeof(uint64_t));
-            memset(data_ext + old_num_cmps, 0, (num_cmps - old_num_cmps) * sizeof(uint64_t));
+            memcpy(data_ext, data, origin_num_cmps * sizeof(uint64_t));
+            memset(data_ext + origin_num_cmps, 0, (num_cmps - origin_num_cmps) * sizeof(uint64_t));
         }
 
         uint8_t *digits;       // num_digits * num_cmps
@@ -529,11 +583,11 @@ public:
 
         traverse_and_compute_ANDs(*triple_gen, num_cmps, leaf_res_eq, leaf_res_cmp, chl);
 
-        for (int i = 0; i < old_num_cmps; i++)
+        for (int i = 0; i < origin_num_cmps; i++)
             res[i] = leaf_res_cmp[i];
 
         // Cleanup
-        if (old_num_cmps != num_cmps)
+        if (origin_num_cmps != num_cmps)
             delete[] data_ext;
         delete[] digits;
         delete[] leaf_res_cmp;

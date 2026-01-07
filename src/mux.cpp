@@ -39,7 +39,10 @@ MuxSender::~MuxSender()
 
 void MuxSender::muxA(std::vector<u8> &choices, std::vector<u64> &v0, std::vector<u64> &res0)
 {
-    BitVector b0(choices.data(), num);
+    BitVector b0(choices.size());
+    for (u64 i = 0; i < choices.size(); ++i) {
+        b0[i] = choices[i] & 1;
+    }
 
     coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
     coproto::sync_wait(recver->genSilentBaseOts(*prng, *socket));
@@ -75,7 +78,10 @@ void MuxSender::muxA(std::vector<u8> &choices, std::vector<u64> &v0, std::vector
     int bytesLen = divCeil(bitsLen, 8);
     u64 MASK = (u64(1) << bitsLen) - 1;
 
-    BitVector b0(choices.data(), num);
+    BitVector b0(choices.size());
+    for (u64 i = 0; i < choices.size(); ++i) {
+        b0[i] = choices[i] & 1;
+    }
 
     // coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
     // coproto::sync_wait(recver->genSilentBaseOts(*prng, *socket));
@@ -132,7 +138,10 @@ MuxRecver::~MuxRecver()
 
 void MuxRecver::muxA(std::vector<u8> &choices, std::vector<u64> &v1, std::vector<u64> &res1)
 {
-    BitVector b1(choices.data(), num);
+    BitVector b1(choices.size());
+    for (u64 i = 0; i < choices.size(); ++i) {
+        b1[i] = choices[i] & 1;
+    }
 
     coproto::sync_wait(recver->genSilentBaseOts(*prng, *socket));
     coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
@@ -168,7 +177,10 @@ void MuxRecver::muxA(std::vector<u8> &choices, std::vector<u64> &v1, std::vector
     int bytesLen = divCeil(bitsLen, 8);
     u64 MASK = (u64(1) << bitsLen) - 1;
 
-    BitVector b1(choices.data(), num);
+    BitVector b1(choices.size());
+    for (u64 i = 0; i < choices.size(); ++i) {
+        b1[i] = choices[i] & 1;
+    }
 
     // coproto::sync_wait(recver->genSilentBaseOts(*prng, *socket));
     // coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
