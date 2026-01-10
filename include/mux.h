@@ -5,9 +5,7 @@
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <vector>
 #include <volePSI/Defines.h>
-
-using namespace volePSI;
-using namespace osuCrypto;
+#include "utils.h"
 
 class MuxSender {
 public:

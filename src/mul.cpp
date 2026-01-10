@@ -1,5 +1,4 @@
 #include "mul.h"
-#include <vector>
 #include "utils.h"
 
 using namespace osuCrypto;
@@ -23,7 +22,8 @@ void MulSender::mul(std::vector<uint64_t> &inputs, std::vector<uint64_t> &val)
 {
     coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
 
-    u64 numOts = num * 64;
+    u64 bytesLen = divCeil(bitsLen, 8);
+    u64 numOts = num * bitsLen;
     std::vector<std::array<block, 2>> messages(numOts);
 
     coproto::sync_wait(sender->send(messages, *prng, *socket));
@@ -33,18 +33,18 @@ void MulSender::mul(std::vector<uint64_t> &inputs, std::vector<uint64_t> &val)
     std::vector<u8> compressedBits;
 
     for (int i = 0; i < numOts; i++) {
-        int shift = i % 64;
+        int shift = i % bitsLen;
 
-        u64 mask = low(messages[i][0]) + inputs[i / 64];
+        u64 mask = low(messages[i][0]) + inputs[i / bitsLen];
         correctMessages[i] = (low(messages[i][1]) ^ mask) << shift >> shift;
-        for (int j = 0; j < 8 - shift / 8; j++) {
+        for (int j = 0; j < bytesLen - shift / 8; j++) {
             compressedBits.push_back(static_cast<uint8_t>(correctMessages[i] >> (8 * j)) & 0xFF);
         }
     }
 
     for (int i = 0; i < numOts; i++) {
-        int shift = i % 64;
-        val[i / 64] += 0 - ((low(messages[i][0]) << shift >> shift) << shift);
+        int shift = i % bitsLen;
+        val[i / bitsLen] += 0 - ((low(messages[i][0]) << shift >> shift) << shift);
     }
 
     coproto::sync_wait(socket->send(compressedBits));
@@ -69,13 +69,14 @@ void MulRecver::mul(std::vector<uint64_t> &inputs, std::vector<uint64_t> &val)
 {
     coproto::sync_wait(receiver->genSilentBaseOts(*prng, *socket));
 
-    u64 numOts = num * 64;
+    u64 bytesLen = divCeil(bitsLen, 8);
+    u64 numOts = num * bitsLen;
     std::vector<u8> bytes(numOts / 8);
 
     for (int i = 0; i < num; i++) {
         u64 lowbits = inputs[i];
-        for (int j = 0; j < 8; j++) {
-            bytes[i * 8 + j] = (lowbits >> (8 * j)) & 0xFF;
+        for (int j = 0; j < bytesLen; j++) {
+            bytes[i * bytesLen + j] = (lowbits >> (8 * j)) & 0xFF;
         }
     }
 
@@ -94,14 +95,14 @@ void MulRecver::mul(std::vector<uint64_t> &inputs, std::vector<uint64_t> &val)
     u64 offset = 0;
     for (int i = 0; i < numOts; i++) {
         u64 msg = 0;
-        int shift = i % 64;
-        for (int j = 0; j < 8 - shift / 8; j++) {
+        int shift = i % bitsLen;
+        for (int j = 0; j < bytesLen - shift / 8; j++) {
             msg |= u64(compressedBits[offset++]) << (8 * j);
         }
         if (choiceBit[i] & 1) {
-            val[i / 64] += ((low(messages[i]) ^ msg) << shift >> shift) << (i % 64);
+            val[i / bitsLen] += ((low(messages[i]) ^ msg) << shift >> shift) << (i % bitsLen);
         } else {
-            val[i / 64] += (low(messages[i]) << shift >> shift) << (i % 64);
+            val[i / bitsLen] += (low(messages[i]) << shift >> shift) << (i % bitsLen);
         }
     }
 }

@@ -1,13 +1,11 @@
 #pragma once
-
+#include <coproto/Socket/Socket.h>
 #include <sys/types.h>
 #include <vector>
+#include "utils.h"
 #include "volePSI/RsPsi.h"
 
-using namespace volePSI;
-using namespace oc;
-
-void ssPEQT(u32 idx, std::vector<block> &input, BitVector &out, Socket &chl, u32 numThreads);
+void ssPEQT(u32 idx, std::vector<block> &input, oc::BitVector &out, coproto::Socket &chl, u32 numThreads);
 
 class PEqTSender {
 public:
@@ -20,7 +18,7 @@ public:
     bool noCompress;
 
 private:
-    RsPsiSender *sender;
+    volePSI::RsPsiSender *sender;
     coproto::Socket *socket;
 };
 
@@ -35,6 +33,6 @@ public:
     bool noCompress;
 
 private:
-    RsPsiReceiver *recver;
+    volePSI::RsPsiReceiver *recver;
     coproto::Socket *socket;
 };

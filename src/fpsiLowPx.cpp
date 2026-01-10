@@ -1,18 +1,5 @@
-#include <cmath>
 #include <coproto/Socket/AsioSocket.h>
-#include <coproto/Socket/LocalAsyncSock.h>
-#include <cryptoTools/Common/BitVector.h>
-#include <cryptoTools/Common/CLP.h>
 #include <cryptoTools/Common/CuckooIndex.h>
-#include <cryptoTools/Common/Defines.h>
-#include <cryptoTools/Common/block.h>
-#include <cstdint>
-#include <cstring>
-#include <macoro/sync_wait.h>
-#include <thread>
-#include <vector>
-#include <volePSI/Defines.h>
-#include <volePSI/GMW/SilentTripleGen.h>
 #include "cmp.h"
 #include "eq.h"
 #include "mul.h"
@@ -289,7 +276,6 @@ std::vector<u64> shift(const std::vector<u64> &input, int delta, bool isCell = f
         corner[i] = cellId[i] - 1;
         corner[i] = corner[i] * (delta * 2);
     }
-
     return corner;
 }
 
@@ -304,10 +290,23 @@ void fpsiLowLpPx(const oc::CLP &cmd)
 
     int interSize = log2ceil(n);
 
-    int u = (lp == 0) ? log2ceil(6 * delta) + 2 : log2ceil(6 * delta * d) + 1;
+    int u = 64;
+
+    if (lp == 0) {
+        u = log2ceil(6 * delta) + 2;
+    } else if (lp == 1) {
+        u = log2ceil(6 * delta * d) + 1;
+    } else if (lp == 2) {
+        u = log2ceil(u64(d) * u64(3 * delta) * u64(3 * delta));
+    } else {
+        throw std::runtime_error("unsupported lp norm");
+    }
+
     int bytesLen = divCeil(u, 8);
 
-    std::cout << bytesLen * 8 << " bit" << std::endl;
+    if (verbose) {
+        std::cout << "bytesLen: " << bytesLen << std::endl;
+    }
 
     int numTry = cmd.getOr("try", 1);
 
@@ -384,6 +383,7 @@ void fpsiLowLpPx(const oc::CLP &cmd)
                 } else {
                     Tx[i] = block(i, 0);
                     mMapping[i] = keys.size(); // invalid
+                    reverseCuckooMap[i] = n;   // invalid
                 }
             }
 
@@ -745,7 +745,69 @@ void fpsiLowLpPx(const oc::CLP &cmd)
             std::cout << "total final match num: " << counter << std::endl;
         }
 
-        // todo: wLPSI
+        std::thread sendOT([&]() {
+            auto num = finalBits.size();
+            SilentOtExtSender sender;
+            PRNG prng(oc::sysRandomSeed());
+            sender.configure(num);
+
+            coproto::sync_wait(sender.genSilentBaseOts(prng, socket[1]));
+
+            std::vector<std::array<block, 2>> messages(num);
+
+            coproto::sync_wait(sender.send(messages, prng, socket[1]));
+
+            std::vector<u64> correctMessages(num * d);
+            for (u64 i = 0; i < num; i++) {
+                u64 real_idx = reverseCuckooMap[permute[i]];
+                if (real_idx < n) {
+                    prng.SetSeed(messages[i][1]);
+                    for (u64 j = 0; j < d; j++) {
+                        correctMessages[i * d + j] = prng.get<u64>() ^ sendSet[real_idx][j];
+                    }
+                } else {
+                    prng.SetSeed(messages[i][0]);
+                    for (u64 j = 0; j < d; j++) {
+                        correctMessages[i * d + j] = prng.get<u64>();
+                    }
+                }
+            }
+            coproto::sync_wait(socket[1].send(correctMessages));
+        });
+
+        std::vector<std::vector<u64>> result;
+        std::thread recvOT([&]() {
+            oc::BitVector choiceVec = finalBits;
+            auto num = choiceVec.size();
+            SilentOtExtReceiver receiver;
+            PRNG prng(oc::sysRandomSeed());
+            receiver.configure(num);
+
+            coproto::sync_wait(receiver.genSilentBaseOts(prng, socket[0]));
+
+            std::vector<block> recvMessages(num);
+
+            coproto::sync_wait(receiver.receive(choiceVec, recvMessages, prng, socket[0]));
+
+            std::vector<u64> recvCorrectMessages(num * d);
+            coproto::sync_wait(socket[0].recv(recvCorrectMessages));
+
+            for (u64 i = 0; i < num; i++) {
+                if (choiceVec[i] & 1) {
+                    prng.SetSeed(recvMessages[i]);
+                    std::vector<u64> tmp(d);
+                    for (u64 j = 0; j < d; j++) {
+                        tmp[j] = prng.get<u64>() ^ recvCorrectMessages[i * d + j];
+                    }
+                    result.push_back(tmp);
+                }
+            }
+        });
+
+        sendOT.join();
+        recvOT.join();
+
+        time.setTimePoint("OT done");
     }
 
     auto e = time.setTimePoint("all done");
@@ -754,7 +816,7 @@ void fpsiLowLpPx(const oc::CLP &cmd)
         std::cout << time << std::endl;
     }
 
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / numTry / 1024 / 1024 << " MB" << std::endl;
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / double(numTry) / 1024 / 1024 << " MB" << std::endl;
     std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() * 1.0 / double(numTry) / double(1000 * 1000) << " seconds" << std::endl;
 }
 
@@ -963,10 +1025,12 @@ void normL2(
     int bitsLen = bytesLen * 8;
     int extBitsLen = 2 * bitsLen + static_cast<int>(std::ceil(std::log2(d)));
 
+    u64 mask = (1ull << bitsLen) - 1;
+
     auto n = x.size() / d;
 
     std::thread cmpSendThr([&]() {
-        MulSender sender(x.size(), &chl[1]);
+        MulSender sender(x.size(), &chl[1], bitsLen);
 
         std::vector<u64> x_vec(x.begin(), x.end());
         std::vector<u64> dots(x.size());
@@ -974,7 +1038,9 @@ void normL2(
 
         std::vector<u64> absSquare(x.size());
         for (u64 i = 0; i < absSquare.size(); ++i) {
-            absSquare[i] = x[i] * x[i] + 2 * dots[i];
+            u64 square = (__uint128_t(x[i]) * __uint128_t(x[i])) & mask;
+            absSquare[i] = square + 2 * dots[i];
+            absSquare[i] = absSquare[i] & mask;
         }
 
         std::vector<u64> dis(n, 0);
@@ -983,15 +1049,16 @@ void normL2(
             for (u64 j = 0; j < d; ++j) {
                 dis[i] += absSquare[i * d + j];
             }
+            dis[i] = (delta_p - dis[i]) & mask;
         }
 
-        MillionaireProtocolSender sender2(dis.size(), extBitsLen);
+        MillionaireProtocolSender sender2(dis.size(), bitsLen);
 
-        sender2.compare(resBits1.data(), dis.data(), chl[1]);
+        sender2.drelu(resBits1.data(), dis.data(), chl[1]);
     });
 
     std::thread cmpRecvThr([&]() {
-        MulRecver recver(y.size(), &chl[0]);
+        MulRecver recver(y.size(), &chl[0], bitsLen);
 
         std::vector<u64> y_vec(y.begin(), y.end());
         std::vector<u64> dots(y.size());
@@ -1000,7 +1067,9 @@ void normL2(
         std::vector<u64> absSquare(y.size());
 
         for (u64 i = 0; i < absSquare.size(); ++i) {
-            absSquare[i] = y[i] * y[i] + 2 * dots[i];
+            u64 square = (__uint128_t(y[i]) * __uint128_t(y[i])) & mask;
+            absSquare[i] = square + 2 * dots[i];
+            absSquare[i] = absSquare[i] & mask;
         }
 
         std::vector<u64> dis(y.size() / d, 0);
@@ -1009,11 +1078,12 @@ void normL2(
             for (u64 j = 0; j < d; ++j) {
                 dis[i] += absSquare[i * d + j];
             }
+            dis[i] = (-dis[i]) & mask;
         }
 
-        MillionaireProtocolRecver recver2(dis.size(), extBitsLen);
+        MillionaireProtocolRecver recver2(dis.size(), bitsLen);
 
-        recver2.compare(resBits0.data(), dis.data(), chl[0]);
+        recver2.drelu(resBits0.data(), dis.data(), chl[0]);
     });
 
     cmpSendThr.join();

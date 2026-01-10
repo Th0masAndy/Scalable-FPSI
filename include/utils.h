@@ -13,7 +13,10 @@
 #include <tuple>
 #include <vector>
 
-using namespace osuCrypto;
+using u32 = oc::u32;
+using u64 = oc::u64;
+using u8 = oc::u8;
+using block = oc::block;
 
 std::tuple<std::vector<std::vector<u64>>, std::vector<std::vector<u64>>> genInputs(u64 n, u64 d);
 

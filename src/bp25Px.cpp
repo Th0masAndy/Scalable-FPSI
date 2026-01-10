@@ -1,18 +1,11 @@
-#include <cmath>
 #include <coproto/Socket/AsioSocket.h>
-#include <coproto/Socket/LocalAsyncSock.h>
-#include <cryptoTools/Common/CLP.h>
-#include <cryptoTools/Common/Defines.h>
-#include <cryptoTools/Common/block.h>
-#include <cstdlib>
-#include <macoro/sync_wait.h>
-#include <thread>
-#include <vector>
-#include <volePSI/Defines.h>
+#include <cryptoTools/Common/CuckooIndex.h>
 #include "opprf.h"
 #include "params.h"
 #include "sparsehash/dense_hash_map"
 #include "utils.h"
+
+using namespace oc;
 
 void sampleDataBp25(std::vector<std::vector<u64>> &sendSet, std::vector<std::vector<u64>> &recvSet, int delta, u64 n, size_t d, PRNG &prng)
 {
@@ -240,7 +233,9 @@ void bp25LowPx(const oc::CLP &cmd)
 
     auto e = time.setTimePoint("wLPSI done");
 
-    std::cout << time << std::endl;
+    if (verbose) {
+        std::cout << time << std::endl;
+    }
 
     std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
     std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() / double(1000 * 1000) << " seconds" << std::endl;

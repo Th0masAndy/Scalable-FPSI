@@ -1,21 +1,12 @@
 #include "mux.h"
 #include <coproto/Socket/Socket.h>
-#include <coproto/coproto.h>
-#include <cryptoTools/Common/BitVector.h>
-#include <cryptoTools/Common/CLP.h>
-#include <cryptoTools/Common/Defines.h>
-#include <cryptoTools/Common/Timer.h>
-#include <cryptoTools/Common/block.h>
-#include <cryptoTools/Crypto/PRNG.h>
-#include <cstring>
-#include <sys/types.h>
-#include <vector>
-#include <volePSI/Defines.h>
 #include <volePSI/GMW/Circuit.h>
 #include <volePSI/GMW/Gmw.h>
 #include <volePSI/Paxos.h>
 #include <volePSI/config.h>
 #include "utils.h"
+
+using namespace oc;
 
 MuxSender::MuxSender(uint64_t num_, coproto::Socket *socket_) : num(num_), socket(socket_)
 {

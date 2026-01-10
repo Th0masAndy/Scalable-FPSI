@@ -4,6 +4,9 @@
 #include <volePSI/GMW/Circuit.h>
 #include <volePSI/GMW/Gmw.h>
 
+using namespace volePSI;
+using namespace oc;
+
 PEqTSender::PEqTSender(uint64_t num_, uint64_t numThreads_, bool noCompress_, coproto::Socket *socket_)
     : num(num_), numThreads(numThreads_), noCompress(noCompress_), socket(socket_)
 {

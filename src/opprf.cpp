@@ -7,6 +7,9 @@
 #include <volePSI/Paxos.h>
 #include "utils.h"
 
+using namespace oc;
+using namespace volePSI;
+
 OpprfSender::OpprfSender(size_t _decodeSize, size_t _kvSize) : decodeSize(_decodeSize), kvSize(_kvSize)
 {
     prng = PRNG(oc::sysRandomSeed());

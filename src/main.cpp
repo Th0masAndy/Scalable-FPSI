@@ -10,9 +10,10 @@
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <thread>
 #include <vector>
+#include <volePSI/RsOprf.h>
 #include "cmp.h"
+#include "mul.h"
 #include "mux.h"
-#include "permute.h"
 #include "proto.h"
 
 int main(int argc, char **argv)
@@ -22,7 +23,7 @@ int main(int argc, char **argv)
     int lp = cmd.getOr("p", 0);
 
     const std::pair<const char *, std::function<void()>> handlers[] = {
-        { "bp25",
+        { "bp25low",
           [&] {
               (lp ? bp25LowLpPx : bp25LowPx)(cmd);
           } },
@@ -36,7 +37,7 @@ int main(int argc, char **argv)
           } },
         { "bp25high",
           [&] {
-              bp25High(cmd);
+              (lp ? bp25HighLp : bp25High)(cmd);
           } },
     };
 
@@ -49,6 +50,59 @@ int main(int argc, char **argv)
 
     return 0;
 
+    auto chl = coproto::AsioSocket::makePair();
+
+    u64 size = 1 << 16;
+
+    int bitLen = 56;
+    u64 mask = (1ULL << bitLen) - 1;
+
+    MulSender sender1(size, &chl[1], 56);
+    MulRecver recver1(size, &chl[0], 56);
+
+    std::vector<u64> input1(size);
+    std::vector<u64> input2(size);
+    std::vector<u64> output1(size);
+    std::vector<u64> output2(size);
+    oc::PRNG prng1(oc::sysRandomSeed());
+    prng1.get(input1.data(), size);
+    prng1.get(input2.data(), size);
+
+    for (auto i = 0; i < size; ++i) {
+        input1[i] = input1[i] & mask;
+        input2[i] = input2[i] & mask;
+    }
+
+    Timer t;
+    t.setTimePoint("begin");
+
+    std::thread sendThr1([&]() { sender1.mul(input1, output1); });
+
+    std::thread recvThr1([&]() { recver1.mul(input2, output2); });
+
+    sendThr1.join();
+    recvThr1.join();
+
+    t.setTimePoint("end");
+
+    std::cout << t << std::endl;
+
+    for (auto i = 0; i < size; ++i) {
+        __uint128_t res = (__uint128_t(input1[i]) * __uint128_t(input2[i])) & mask;
+        __uint128_t val = (__uint128_t(output1[i]) + __uint128_t(output2[i])) & mask;
+        if (res != val) {
+            std::cout << "error at " << i << ": " << (u64)res << " " << (u64)val << std::endl;
+        }
+        if (i == 0) {
+            std::cout << "check mul: " << input1[i] << " * " << input2[i] << " = " << (u64)res << std::endl;
+        }
+    }
+
+    auto comm1 = chl[0].bytesReceived() + chl[0].bytesSent();
+    std::cout << "comm = " << comm1 * 8 / (double)size << " bits per input" << std::endl;
+
+    return 0;
+
     PRNG prng(oc::sysRandomSeed());
 
     u64 r0 = prng.get<u64>();
@@ -56,7 +110,7 @@ int main(int argc, char **argv)
     u64 x0 = prng.get<u64>();
     u64 x1 = prng.get<u64>();
 
-    u64 mask = (1ULL << 56) - 1;
+    // u64 mask = (1ULL << 56) - 1;
     r0 = r0 & mask;
     r1 = r1 & mask;
     x0 = x0 & mask;
@@ -87,7 +141,7 @@ int main(int argc, char **argv)
 
     int delta = 128;
 
-    auto chl = coproto::AsioSocket::makePair();
+    // auto chl = coproto::AsioSocket::makePair();
 
     int bitsLen = 64;
 
@@ -189,9 +243,9 @@ int main(int argc, char **argv)
         std::cout << "choiceBit[" << i << "] = " << (u64)choiceBit[i] << std::endl;
     }
 
-    for (u64 i = 0; i < x.size(); i++) {
-        std::cout << x[i] + y[i] << std::endl;
-    }
+    // for (u64 i = 0; i < x.size(); i++) {
+    //     std::cout << x[i] + y[i] << std::endl;
+    // }
 
     return 0;
 

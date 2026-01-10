@@ -1,25 +1,15 @@
-#include <coproto/Common/macoro.h>
 #include <coproto/Socket/AsioSocket.h>
-#include <coproto/Socket/LocalAsyncSock.h>
-#include <cryptoTools/Common/CLP.h>
 #include <cryptoTools/Common/CuckooIndex.h>
-#include <cryptoTools/Common/Defines.h>
-#include <cryptoTools/Common/Matrix.h>
-#include <cryptoTools/Common/block.h>
-#include <cstdint>
-#include <cstdlib>
-#include <iostream>
-#include <macoro/sync_wait.h>
+#include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <thread>
 #include <vector>
-#include <volePSI/Defines.h>
-#include <volePSI/RsOpprf.h>
 #include "cmp.h"
 #include "eq.h"
 #include "mul.h"
 #include "mux.h"
 #include "opprf.h"
 #include "params.h"
+#include "permute.h"
 #include "sparsehash/dense_hash_map"
 #include "utils.h"
 
@@ -509,7 +499,63 @@ void fpsiHighLpPx(const oc::CLP &cmd)
             }
         }
 
-        // todo: OT
+        std::thread sendOT([&]() {
+            auto num = choiceBit.size();
+            SilentOtExtSender sender;
+            PRNG prng(oc::sysRandomSeed());
+            sender.configure(num);
+
+            coproto::sync_wait(sender.genSilentBaseOts(prng, socket[1]));
+
+            std::vector<std::array<block, 2>> messages(num);
+
+            coproto::sync_wait(sender.send(messages, prng, socket[1]));
+
+            std::vector<u64> correctMessages(num * d);
+            for (u64 i = 0; i < num; i++) {
+                prng.SetSeed(messages[i][1]);
+                for (u64 j = 0; j < d; j++) {
+                    correctMessages[i * d + j] = prng.get<u64>() ^ x[i * d + j];
+                }
+            }
+            coproto::sync_wait(socket[1].send(correctMessages));
+        });
+
+        std::vector<std::vector<u64>> result;
+        std::thread recvOT([&]() {
+            oc::BitVector choiceVec(choiceBit.size());
+            for (u64 i = 0; i < choiceBit.size(); i++) {
+                choiceVec[i] = choiceBit[i] & 1;
+            }
+            auto num = choiceVec.size();
+            SilentOtExtReceiver receiver;
+            PRNG prng(oc::sysRandomSeed());
+            receiver.configure(num);
+
+            coproto::sync_wait(receiver.genSilentBaseOts(prng, socket[0]));
+
+            std::vector<block> recvMessages(num);
+
+            coproto::sync_wait(receiver.receive(choiceVec, recvMessages, prng, socket[0]));
+
+            std::vector<u64> recvCorrectMessages(num * d);
+            coproto::sync_wait(socket[0].recv(recvCorrectMessages));
+
+            for (u64 i = 0; i < num; i++) {
+                if (choiceBit[i] & 1) {
+                    prng.SetSeed(recvMessages[i]);
+                    std::vector<u64> tmp(d);
+                    for (u64 j = 0; j < d; j++) {
+                        tmp[j] = prng.get<u64>() ^ recvCorrectMessages[i * d + j];
+                        tmp[j] += y[i * d + j] + recvSet[mMapping[i]][j];
+                    }
+                    result.push_back(tmp);
+                }
+            }
+        });
+
+        sendOT.join();
+        recvOT.join();
 
         time.setTimePoint("OT done");
     }
@@ -775,13 +821,19 @@ void normL1(std::vector<u64> x, std::vector<u64> y, std::vector<u8> &choiceBit, 
 
 void normL2(oc::span<u64> x, oc::span<u64> y, std::vector<u8> &choiceBit, u64 d, int delta, std::array<coproto::AsioSocket, 2> &chl)
 {
-    u64 delta_p = delta * delta;
-    int prefixLenIfmat = static_cast<int>(std::ceil(std::log2(delta_p * 2 + 1)));
-    PRNG prng(sysRandomSeed());
+    int bitsLen = 56;
+    u64 mask = (1ull << bitsLen) - 1;
+    int extBitlen = roundUpTo(bitsLen + log2ceil(d), 8);
+
     auto n = x.size() / d;
 
+    for (auto i = 0; i < x.size(); ++i) {
+        x[i] = x[i] & mask;
+        y[i] = y[i] & mask;
+    }
+
     std::thread cmpSendThr([&]() {
-        MulSender sender(x.size(), &chl[1]);
+        MulSender sender(x.size(), &chl[1], bitsLen);
 
         std::vector<u64> x_vec(x.begin(), x.end());
         std::vector<u64> dots(x.size());
@@ -789,37 +841,50 @@ void normL2(oc::span<u64> x, oc::span<u64> y, std::vector<u8> &choiceBit, u64 d,
 
         std::vector<u64> absSquare(x.size());
         for (u64 i = 0; i < absSquare.size(); ++i) {
-            absSquare[i] = x[i] * x[i] + 2 * dots[i];
+            u64 square = (__uint128_t(x[i]) * __uint128_t(x[i])) & mask;
+            absSquare[i] = square + 2 * dots[i];
+            absSquare[i] = absSquare[i] & mask;
         }
 
         std::vector<u64> dis(n, 0);
+        std::vector<u64> ext_dis(n, 0);
 
         for (u64 i = 0; i < dis.size(); ++i) {
             for (u64 j = 0; j < d; ++j) {
                 dis[i] += absSquare[i * d + j];
             }
+            dis[i] = dis[i] & mask;
+            ext_dis[i] = dis[i];
+            dis[i] = dis[i] - (1ULL << bitsLen);
         }
 
-        std::vector<block> prefixS;
+        MillionaireProtocolSender sender2(dis.size(), extBitlen);
+        MuxSender mux2(dis.size(), &chl[1]);
 
-        for (u64 i = 0; i < n; i++) {
-            auto pre = getIntervalPrefix(0ULL - dis[i], delta_p - dis[i]);
-            for (auto &p : pre) {
-                p = p ^ block(i << 32, 0);
-                prefixS.push_back(p);
-            }
+        std::vector<u8> carry(dis.size());
+        std::vector<u64> mod(dis.size(), 0);
+        std::vector<u64> res_mux(dis.size());
+        sender2.drelu(carry.data(), dis.data(), chl[1]);
+
+        mux2.muxA(carry, mod, res_mux);
+
+        for (u64 i = 0; i < dis.size(); ++i) {
+            ext_dis[i] = ext_dis[i] - res_mux[i];
         }
-        while (prefixS.size() != (n * prefixLenIfmat)) {
-            prefixS.push_back(prng.get<block>());
+
+        std::vector<u8> resBits1(dis.size());
+
+        for (u64 i = 0; i < dis.size(); ++i) {
+            ext_dis[i] = u64(delta * delta) - ext_dis[i];
         }
 
-        PEqTSender eqSend(n * prefixLenIfmat, 1, false, &chl[1]);
+        sender2.drelu(resBits1.data(), ext_dis.data(), chl[1]);
 
-        eqSend.eq(prefixS);
+        coproto::sync_wait(chl[1].send(resBits1));
     });
 
     std::thread cmpRecvThr([&]() {
-        MulRecver recver(y.size(), &chl[0]);
+        MulRecver recver(y.size(), &chl[0], bitsLen);
 
         std::vector<u64> y_vec(y.begin(), y.end());
         std::vector<u64> dots(y.size());
@@ -828,35 +893,50 @@ void normL2(oc::span<u64> x, oc::span<u64> y, std::vector<u8> &choiceBit, u64 d,
         std::vector<u64> absSquare(y.size());
 
         for (u64 i = 0; i < absSquare.size(); ++i) {
-            absSquare[i] = y[i] * y[i] + 2 * dots[i];
+            u64 square = (__uint128_t(y[i]) * __uint128_t(y[i])) & mask;
+            absSquare[i] = square + 2 * dots[i];
+            absSquare[i] = absSquare[i] & mask;
         }
 
-        std::vector<u64> dis(y.size() / d, 0);
+        std::vector<u64> dis(n, 0);
+        std::vector<u64> ext_dis(n, 0);
 
         for (u64 i = 0; i < dis.size(); ++i) {
             for (u64 j = 0; j < d; ++j) {
                 dis[i] += absSquare[i * d + j];
             }
+            dis[i] = dis[i] & mask;
+            ext_dis[i] = dis[i];
         }
 
-        std::vector<block> prefixR;
+        MillionaireProtocolRecver recver2(dis.size(), extBitlen);
+        MuxRecver mux2(dis.size(), &chl[0]);
 
-        for (u64 i = 0; i < n; i++) {
-            auto pre = getPrefix(dis[i], prefixLenIfmat);
-            for (auto &p : pre) {
-                p = p ^ block(i << 32, 0);
-                prefixR.push_back(p);
-            }
+        std::vector<u8> carry(dis.size());
+        std::vector<u64> mod(dis.size(), (1ULL << bitsLen));
+        std::vector<u64> res_mux(dis.size());
+
+        recver2.drelu(carry.data(), dis.data(), chl[0]);
+        mux2.muxA(carry, mod, res_mux);
+
+        std::vector<u8> carry_recv(dis.size());
+
+        for (u64 i = 0; i < dis.size(); ++i) {
+            ext_dis[i] = ext_dis[i] - res_mux[i];
         }
 
-        PEqTRecver eqRecv(n * prefixLenIfmat, 1, false, &chl[0]);
+        std::vector<u8> resBits0(dis.size());
 
-        std::vector<u64> intersection;
+        for (u64 i = 0; i < dis.size(); ++i) {
+            ext_dis[i] = (u64)0 - ext_dis[i];
+        }
 
-        eqRecv.eq(prefixR, intersection);
+        recver2.drelu(resBits0.data(), ext_dis.data(), chl[0]);
 
-        for (auto &v : intersection) {
-            choiceBit[v / prefixLenIfmat] = 1;
+        std::vector<u8> resBits1(dis.size());
+        coproto::sync_wait(chl[0].recv(resBits1));
+        for (u64 i = 0; i < dis.size(); ++i) {
+            choiceBit[i] = (resBits1[i] ^ resBits0[i]) & 1;
         }
     });
 

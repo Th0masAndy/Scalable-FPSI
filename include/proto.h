@@ -8,4 +8,6 @@ void fpsiHighLpPx(const oc::CLP &cmd);
 
 void bp25LowPx(const oc::CLP &cmd);
 void bp25LowLpPx(const oc::CLP &cmd);
+
 void bp25High(const oc::CLP &cmd);
+void bp25HighLp(const oc::CLP &cmd);
