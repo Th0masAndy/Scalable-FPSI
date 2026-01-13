@@ -50,204 +50,226 @@ int main(int argc, char **argv)
 
     return 0;
 
-    auto chl = coproto::AsioSocket::makePair();
+    // auto chl = coproto::AsioSocket::makePair();
 
-    u64 size = 1 << 16;
+    // u64 size = 1 << cmd.getOr("nn", 20);
 
-    int bitLen = 56;
-    u64 mask = (1ULL << bitLen) - 1;
+    // RsOprfSender sender0;
+    // RsOprfReceiver receiver;
 
-    MulSender sender1(size, &chl[1], 56);
-    MulRecver recver1(size, &chl[0], 56);
+    // std::vector<block> X(size);
+    // PRNG prng2(oc::sysRandomSeed());
+    // prng2.get(X.data(), X.size());
+    // Timer t;
+    // t.setTimePoint("begin");
+    // std::thread sendThr0([&]() { coproto::sync_wait(sender0.send(size, prng2, chl[1])); });
+    // std::thread recvThr0([&]() {
+    //     std::vector<block> outputs(size);
+    //     coproto::sync_wait(receiver.receive(X, outputs, prng2, chl[0]));
+    // });
 
-    std::vector<u64> input1(size);
-    std::vector<u64> input2(size);
-    std::vector<u64> output1(size);
-    std::vector<u64> output2(size);
-    oc::PRNG prng1(oc::sysRandomSeed());
-    prng1.get(input1.data(), size);
-    prng1.get(input2.data(), size);
+    // sendThr0.join();
+    // recvThr0.join();
+    // t.setTimePoint("end");
 
-    for (auto i = 0; i < size; ++i) {
-        input1[i] = input1[i] & mask;
-        input2[i] = input2[i] & mask;
-    }
+    // std::cout << t << std::endl;
 
-    Timer t;
-    t.setTimePoint("begin");
+    // return 0;
 
-    std::thread sendThr1([&]() { sender1.mul(input1, output1); });
+    // int bitLen = 56;
+    // u64 mask = (1ULL << bitLen) - 1;
 
-    std::thread recvThr1([&]() { recver1.mul(input2, output2); });
+    // MulSender sender1(size, &chl[1], 56);
+    // MulRecver recver1(size, &chl[0], 56);
 
-    sendThr1.join();
-    recvThr1.join();
+    // std::vector<u64> input1(size);
+    // std::vector<u64> input2(size);
+    // std::vector<u64> output1(size);
+    // std::vector<u64> output2(size);
+    // oc::PRNG prng1(oc::sysRandomSeed());
+    // prng1.get(input1.data(), size);
+    // prng1.get(input2.data(), size);
 
-    t.setTimePoint("end");
+    // for (auto i = 0; i < size; ++i) {
+    //     input1[i] = input1[i] & mask;
+    //     input2[i] = input2[i] & mask;
+    // }
 
-    std::cout << t << std::endl;
+    // // Timer t;
+    // t.setTimePoint("begin");
 
-    for (auto i = 0; i < size; ++i) {
-        __uint128_t res = (__uint128_t(input1[i]) * __uint128_t(input2[i])) & mask;
-        __uint128_t val = (__uint128_t(output1[i]) + __uint128_t(output2[i])) & mask;
-        if (res != val) {
-            std::cout << "error at " << i << ": " << (u64)res << " " << (u64)val << std::endl;
-        }
-        if (i == 0) {
-            std::cout << "check mul: " << input1[i] << " * " << input2[i] << " = " << (u64)res << std::endl;
-        }
-    }
+    // std::thread sendThr1([&]() { sender1.mul(input1, output1); });
 
-    auto comm1 = chl[0].bytesReceived() + chl[0].bytesSent();
-    std::cout << "comm = " << comm1 * 8 / (double)size << " bits per input" << std::endl;
+    // std::thread recvThr1([&]() { recver1.mul(input2, output2); });
 
-    return 0;
+    // sendThr1.join();
+    // recvThr1.join();
 
-    PRNG prng(oc::sysRandomSeed());
+    // t.setTimePoint("end");
 
-    u64 r0 = prng.get<u64>();
-    u64 r1 = prng.get<u64>();
-    u64 x0 = prng.get<u64>();
-    u64 x1 = prng.get<u64>();
+    // std::cout << t << std::endl;
 
-    // u64 mask = (1ULL << 56) - 1;
-    r0 = r0 & mask;
-    r1 = r1 & mask;
-    x0 = x0 & mask;
-    x1 = x1 & mask;
-    x1 = (((r0 + r1) & mask) + (1ULL << 56) - x0) & mask;
+    // for (auto i = 0; i < size; ++i) {
+    //     __uint128_t res = (__uint128_t(input1[i]) * __uint128_t(input2[i])) & mask;
+    //     __uint128_t val = (__uint128_t(output1[i]) + __uint128_t(output2[i])) & mask;
+    //     if (res != val) {
+    //         std::cout << "error at " << i << ": " << (u64)res << " " << (u64)val << std::endl;
+    //     }
+    //     if (i == 0) {
+    //         std::cout << "check mul: " << input1[i] << " * " << input2[i] << " = " << (u64)res << std::endl;
+    //     }
+    // }
 
-    std::cout << ((x0 + x1) & mask) << std::endl;
-    std::cout << ((r0 + r1) & mask) << std::endl;
+    // auto comm1 = chl[0].bytesReceived() + chl[0].bytesSent();
+    // std::cout << "comm = " << comm1 * 8 / (double)size << " bits per input" << std::endl;
 
-    u64 y0 = 2 * r0 - x0;
+    // return 0;
 
-    u64 y1 = 2 * r1 - x1;
+    // PRNG prng(oc::sysRandomSeed());
 
-    std::cout << int64_t((y0 + y1) & mask) << std::endl;
+    // u64 r0 = prng.get<u64>();
+    // u64 r1 = prng.get<u64>();
+    // u64 x0 = prng.get<u64>();
+    // u64 x1 = prng.get<u64>();
 
-    return 0;
+    // // u64 mask = (1ULL << 56) - 1;
+    // r0 = r0 & mask;
+    // r1 = r1 & mask;
+    // x0 = x0 & mask;
+    // x1 = x1 & mask;
+    // x1 = (((r0 + r1) & mask) + (1ULL << 56) - x0) & mask;
 
-    std::vector<u64> x;
-    std::vector<u64> y;
+    // std::cout << ((x0 + x1) & mask) << std::endl;
+    // std::cout << ((r0 + r1) & mask) << std::endl;
 
-    for (u64 i = 0; i < (1 << 7); ++i) {
-        auto v = prng.get<u64>();
-        x.push_back(v);
-        y.push_back(i * 3 - v);
-    }
+    // u64 y0 = 2 * r0 - x0;
 
-    int d = 1;
+    // u64 y1 = 2 * r1 - x1;
 
-    int delta = 128;
+    // std::cout << int64_t((y0 + y1) & mask) << std::endl;
+
+    // return 0;
+
+    // std::vector<u64> x;
+    // std::vector<u64> y;
+
+    // for (u64 i = 0; i < (1 << 7); ++i) {
+    //     auto v = prng.get<u64>();
+    //     x.push_back(v);
+    //     y.push_back(i * 3 - v);
+    // }
+
+    // int d = 1;
+
+    // int delta = 128;
 
     // auto chl = coproto::AsioSocket::makePair();
 
-    int bitsLen = 64;
+    // int bitsLen = 64;
 
-    auto n = x.size() / d;
+    // auto n = x.size() / d;
 
-    std::vector<u8> choiceBit(n);
+    // std::vector<u8> choiceBit(n);
 
-    std::vector<u64> abs_s(x.size());
-    std::vector<u64> abs_r(x.size());
+    // std::vector<u64> abs_s(x.size());
+    // std::vector<u64> abs_r(x.size());
 
-    std::thread cmpSendThr([&]() {
-        MillionaireProtocolSender sender(x.size(), bitsLen);
+    // std::thread cmpSendThr([&]() {
+    //     MillionaireProtocolSender sender(x.size(), bitsLen);
 
-        std::vector<u8> cmpShare(x.size());
-        sender.drelu(cmpShare.data(), x.data(), chl[1]);
+    //     std::vector<u8> cmpShare(x.size());
+    //     sender.drelu(cmpShare.data(), x.data(), chl[1]);
 
-        MuxSender mux(x.size(), &chl[1]);
+    //     MuxSender mux(x.size(), &chl[1]);
 
-        std::vector<u64> res(x.size());
-        std::vector<u64> x_vec(x.begin(), x.end());
+    //     std::vector<u64> res(x.size());
+    //     std::vector<u64> x_vec(x.begin(), x.end());
 
-        mux.muxA(cmpShare, x_vec, res);
+    //     mux.muxA(cmpShare, x_vec, res);
 
-        coproto::sync_wait(chl[1].send(cmpShare));
+    //     coproto::sync_wait(chl[1].send(cmpShare));
 
-        for (u64 i = 0; i < abs_s.size(); ++i) {
-            abs_s[i] = 2 * res[i] - x[i];
-        }
+    //     for (u64 i = 0; i < abs_s.size(); ++i) {
+    //         abs_s[i] = 2 * res[i] - x[i];
+    //     }
 
-        std::vector<u64> dis(n, 0);
+    //     std::vector<u64> dis(n, 0);
 
-        for (u64 i = 0; i < dis.size(); ++i) {
-            for (u64 j = 0; j < d; ++j) {
-                dis[i] += abs_s[i * d + j];
-            }
-            dis[i] = delta - dis[i];
-        }
+    //     for (u64 i = 0; i < dis.size(); ++i) {
+    //         for (u64 j = 0; j < d; ++j) {
+    //             dis[i] += abs_s[i * d + j];
+    //         }
+    //         dis[i] = delta - dis[i];
+    //     }
 
-        MillionaireProtocolSender sender2(dis.size(), bitsLen);
+    //     MillionaireProtocolSender sender2(dis.size(), bitsLen);
 
-        std::vector<u8> resBits1(dis.size());
+    //     std::vector<u8> resBits1(dis.size());
 
-        sender2.drelu(resBits1.data(), dis.data(), chl[1]);
+    //     sender2.drelu(resBits1.data(), dis.data(), chl[1]);
 
-        coproto::sync_wait(chl[1].send(resBits1));
-    });
+    //     coproto::sync_wait(chl[1].send(resBits1));
+    // });
 
-    std::thread cmpRecvThr([&]() {
-        MillionaireProtocolRecver recver(y.size(), bitsLen);
+    // std::thread cmpRecvThr([&]() {
+    //     MillionaireProtocolRecver recver(y.size(), bitsLen);
 
-        std::vector<u8> cmpShare(y.size());
-        recver.drelu(cmpShare.data(), y.data(), chl[0]);
+    //     std::vector<u8> cmpShare(y.size());
+    //     recver.drelu(cmpShare.data(), y.data(), chl[0]);
 
-        MuxRecver mux(y.size(), &chl[0]);
-        std::vector<u64> res(y.size());
-        std::vector<u64> y_vec(y.begin(), y.end());
+    //     MuxRecver mux(y.size(), &chl[0]);
+    //     std::vector<u64> res(y.size());
+    //     std::vector<u64> y_vec(y.begin(), y.end());
 
-        mux.muxA(cmpShare, y_vec, res);
+    //     mux.muxA(cmpShare, y_vec, res);
 
-        std::vector<u8> cmpShare1(y.size());
-        coproto::sync_wait(chl[0].recv(cmpShare1));
-        for (u64 i = 0; i < cmpShare1.size(); ++i) {
-            cmpShare[i] = cmpShare[i] ^ cmpShare1[i];
-            std::cout << (cmpShare[i] & 1) << std::endl;
-        }
+    //     std::vector<u8> cmpShare1(y.size());
+    //     coproto::sync_wait(chl[0].recv(cmpShare1));
+    //     for (u64 i = 0; i < cmpShare1.size(); ++i) {
+    //         cmpShare[i] = cmpShare[i] ^ cmpShare1[i];
+    //         std::cout << (cmpShare[i] & 1) << std::endl;
+    //     }
 
-        for (u64 i = 0; i < abs_r.size(); ++i) {
-            abs_r[i] = 2 * res[i] - y[i];
-        }
+    //     for (u64 i = 0; i < abs_r.size(); ++i) {
+    //         abs_r[i] = 2 * res[i] - y[i];
+    //     }
 
-        std::vector<u64> dis(y.size() / d, 0);
+    //     std::vector<u64> dis(y.size() / d, 0);
 
-        for (u64 i = 0; i < dis.size(); ++i) {
-            for (u64 j = 0; j < d; ++j) {
-                dis[i] += abs_r[i * d + j];
-            }
-            dis[i] = -dis[i];
-        }
+    //     for (u64 i = 0; i < dis.size(); ++i) {
+    //         for (u64 j = 0; j < d; ++j) {
+    //             dis[i] += abs_r[i * d + j];
+    //         }
+    //         dis[i] = -dis[i];
+    //     }
 
-        MillionaireProtocolRecver recver2(dis.size(), bitsLen);
+    //     MillionaireProtocolRecver recver2(dis.size(), bitsLen);
 
-        recver2.drelu(choiceBit.data(), dis.data(), chl[0]);
+    //     recver2.drelu(choiceBit.data(), dis.data(), chl[0]);
 
-        std::vector<u8> resBits1(dis.size());
-        coproto::sync_wait(chl[0].recv(resBits1));
-        for (u64 i = 0; i < dis.size(); ++i) {
-            choiceBit[i] = (resBits1[i] ^ choiceBit[i]) & 1;
-        }
-    });
+    //     std::vector<u8> resBits1(dis.size());
+    //     coproto::sync_wait(chl[0].recv(resBits1));
+    //     for (u64 i = 0; i < dis.size(); ++i) {
+    //         choiceBit[i] = (resBits1[i] ^ choiceBit[i]) & 1;
+    //     }
+    // });
 
-    cmpSendThr.join();
-    cmpRecvThr.join();
+    // cmpSendThr.join();
+    // cmpRecvThr.join();
 
-    for (u64 i = 0; i < abs_r.size(); ++i) {
-        std::cout << (abs_r[i] + abs_s[i]) << std::endl;
-    }
+    // for (u64 i = 0; i < abs_r.size(); ++i) {
+    //     std::cout << (abs_r[i] + abs_s[i]) << std::endl;
+    // }
 
-    for (u64 i = 0; i < choiceBit.size(); ++i) {
-        std::cout << "choiceBit[" << i << "] = " << (u64)choiceBit[i] << std::endl;
-    }
+    // for (u64 i = 0; i < choiceBit.size(); ++i) {
+    //     std::cout << "choiceBit[" << i << "] = " << (u64)choiceBit[i] << std::endl;
+    // }
 
     // for (u64 i = 0; i < x.size(); i++) {
     //     std::cout << x[i] + y[i] << std::endl;
     // }
 
-    return 0;
+    // return 0;
 
     // u64 n = 1 << 10;
 
@@ -358,35 +380,39 @@ int main(int argc, char **argv)
     // time.setTimePoint("end encode");
     // std::cout << time << std::endl;
 
-    // u64 n = (1 << 20) + 17;
+    u64 n = 1 << 24;
 
     MillionaireProtocolRecver recver(n, 64, 4);
     MillionaireProtocolSender sender(n, 64, 4);
 
     auto socket = coproto::AsioSocket::makePair();
 
-    // oc::PRNG prng(oc::sysRandomSeed());
+    oc::PRNG prng(oc::sysRandomSeed());
 
     std::vector<u64> data0(n);
     std::vector<u64> data1(n);
     std::vector<u8> outs0(n);
     std::vector<u8> outs1(n);
 
+    std::vector<u64> data0_copy(n);
+    std::vector<u64> data1_copy(n);
+
     prng.get(data0.data(), n);
     prng.get(data1.data(), n);
+
+    for (auto i = 0; i < n; ++i) {
+        data0[i] = 1;
+        data1[i] = 1;
+        data0_copy[i] = data0[i];
+        data1_copy[i] = data1[i];
+    }
 
     oc::Timer time;
     auto s = time.setTimePoint("begin cmp");
 
-    std::thread recvThr([&]() {
-        recver.compare(outs0.data(), data0.data(), socket[0]);
-        recver.compare(outs0.data(), data0.data(), socket[0]);
-    });
+    std::thread recvThr([&]() { recver.drelu(outs0.data(), data0.data(), socket[0]); });
 
-    std::thread sendThr([&]() {
-        sender.compare(outs1.data(), data1.data(), socket[1]);
-        sender.compare(outs1.data(), data1.data(), socket[1]);
-    });
+    std::thread sendThr([&]() { sender.drelu(outs1.data(), data1.data(), socket[1]); });
 
     recvThr.join();
     sendThr.join();
@@ -395,11 +421,17 @@ int main(int argc, char **argv)
 
     int correct = 0;
     for (u64 i = 0; i < n; ++i) {
-        bool gt = data1[i] > data0[i];
+        bool gt = int64_t(data1[i] + data0[i]) > 0;
         if (gt == ((outs1[i] ^ outs0[i]) & 1))
             correct++;
     }
     std::cout << "correct: " << correct << " / " << n << std::endl;
+
+    for (u64 i = 0; i < n; i++) {
+        if (data0_copy[i] != data0[i] || data1_copy[i] != data1[i]) {
+            std::cout << "data changed at " << i << std::endl;
+        }
+    }
 
     auto comm = socket[0].bytesReceived() + socket[0].bytesSent();
     auto comp = std::chrono::duration_cast<std::chrono::microseconds>(e - s).count();

@@ -4,12 +4,10 @@
 #include <thread>
 #include <vector>
 #include "cmp.h"
-#include "eq.h"
 #include "mul.h"
 #include "mux.h"
 #include "opprf.h"
 #include "params.h"
-#include "permute.h"
 #include "sparsehash/dense_hash_map"
 #include "utils.h"
 
@@ -233,8 +231,8 @@ void fpsiHighPx(const oc::CLP &cmd)
         std::cout << time << std::endl;
     }
 
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / numTry / 1024 / 1024 << " MB" << std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() * 1.0 / numTry / double(1000 * 1000) << " seconds" << std::endl;
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / double(numTry) / 1024 / 1024 << " MB" << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() * 1.0 / double(numTry) / double(1000 * 1000) << " seconds" << std::endl;
 }
 
 void fpsiHighLpPx(const oc::CLP &cmd)
@@ -314,7 +312,7 @@ void fpsiHighLpPx(const oc::CLP &cmd)
 
     auto socket = coproto::AsioSocket::makePair();
 
-    {
+    for (auto t = 0; t < numTry; t++) {
         std::thread recvThr([&]() {
             OpprfRevcer recver(n * d * prefixNum, n * d * prefixLen);
             recver.setTimer(time);
@@ -370,9 +368,11 @@ void fpsiHighLpPx(const oc::CLP &cmd)
 
         time.setTimePoint("second OPPRF done");
 
-        for (u64 i = 0; i < rand_R.size(); i++) {
-            if (rand_R[i] == rand_S[i]) {
-                std::cout << "match at index " << i << std::endl;
+        if (verbose) {
+            for (u64 i = 0; i < rand_R.size(); i++) {
+                if (rand_R[i] == rand_S[i]) {
+                    std::cout << "match at index " << i << std::endl;
+                }
             }
         }
 
@@ -470,13 +470,15 @@ void fpsiHighLpPx(const oc::CLP &cmd)
         matchSendThr.join();
         matchRecvThr.join();
 
-        for (u64 i = 0; i < interSize; i++) {
-            auto b = cuckooMap[i];
-            for (u64 j = 0; j < d; j++) {
-                std::cout << int64_t(x[b * d + j] + y[b * d + j]) << ", ";
+        if (verbose) {
+            for (u64 i = 0; i < interSize; i++) {
+                auto b = cuckooMap[i];
+                for (u64 j = 0; j < d; j++) {
+                    std::cout << int64_t(x[b * d + j] + y[b * d + j]) << ", ";
+                }
+                std::cout << "at index " << b << " ";
+                std::cout << std::endl;
             }
-            std::cout << "at index " << b << " ";
-            std::cout << std::endl;
         }
 
         time.setTimePoint("matching done");
@@ -493,9 +495,11 @@ void fpsiHighLpPx(const oc::CLP &cmd)
 
         time.setTimePoint("norm done");
 
-        for (u64 i = 0; i < choiceBit.size(); i++) {
-            if ((choiceBit[i] & 1)) {
-                std::cout << "fianal match at index " << i << std::endl;
+        if (verbose) {
+            for (u64 i = 0; i < choiceBit.size(); i++) {
+                if ((choiceBit[i] & 1)) {
+                    std::cout << "fianal match at index " << i << std::endl;
+                }
             }
         }
 
@@ -566,8 +570,8 @@ void fpsiHighLpPx(const oc::CLP &cmd)
         std::cout << time << std::endl;
     }
 
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() / double(1000 * 1000) << " seconds" << std::endl;
+    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / double(numTry) / 1024 / 1024 << " MB" << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() * 1.0 / double(numTry) / double(1000 * 1000) << " seconds" << std::endl;
 }
 
 void normL1(std::vector<u64> x, std::vector<u64> y, std::vector<u8> &choiceBit, u64 d, int delta, std::array<coproto::AsioSocket, 2> &chl)
@@ -823,7 +827,7 @@ void normL2(oc::span<u64> x, oc::span<u64> y, std::vector<u8> &choiceBit, u64 d,
 {
     int bitsLen = 56;
     u64 mask = (1ull << bitsLen) - 1;
-    int extBitlen = roundUpTo(bitsLen + log2ceil(d), 8);
+    int extBitlen = 64;
 
     auto n = x.size() / d;
 

@@ -1,5 +1,4 @@
 #include <coproto/Socket/AsioSocket.h>
-#include <cryptoTools/Common/CuckooIndex.h>
 #include "opprf.h"
 #include "params.h"
 #include "sparsehash/dense_hash_map"
