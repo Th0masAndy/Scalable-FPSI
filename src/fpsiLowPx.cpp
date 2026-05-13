@@ -495,7 +495,12 @@ void fpsiLowLpPx(const oc::CLP &cmd)
         //     }
         // }
 
-        time.setTimePoint("matching done");
+        auto t_matching = time.setTimePoint("matching done");
+
+        std::cout << "matching time: " << std::chrono::duration_cast<std::chrono::microseconds>(t_matching - s).count() / double(1000 * 1000) << " seconds"
+                  << std::endl;
+
+        std::cout << "comm after matching: " << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
 
         std::vector<u8> resBits0(x.size() / d, 0);
         std::vector<u8> resBits1(y.size() / d, 0);

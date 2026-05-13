@@ -6,15 +6,21 @@
 #include <cryptoTools/Common/Timer.h>
 #include <cstdint>
 #include <iostream>
+#include <libOTe/Triple/SilentOtTriple/SilentOtTriple.h>
+#include <libOTe/TwoChooseOne/ConfigureCode.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <thread>
 #include <vector>
+#include <volePSI/Defines.h>
+#include <volePSI/Paxos.h>
 #include <volePSI/RsOprf.h>
 #include "cmp.h"
+#include "eq.h"
 #include "mul.h"
 #include "mux.h"
 #include "proto.h"
+#include "utils.h"
 
 int main(int argc, char **argv)
 {
@@ -49,6 +55,60 @@ int main(int argc, char **argv)
     }
 
     return 0;
+
+    // int bb = cmd.getOr("b", 1);
+
+    // auto test_size = 1 << 20;
+
+    // Baxos okvs;
+    // okvs.init(test_size, 1 << 14, 3, 40, PaxosParam::Binary, oc::ZeroBlock);
+
+    // auto vals2 = oc::Matrix<u8>(test_size, bb);
+
+    // std::vector<block> keys(test_size);
+    // std::vector<block> vals(test_size);
+    // PRNG prng11(oc::ZeroBlock);
+    // prng11.get(keys.data(), keys.size());
+    // prng11.get(vals.data(), vals.size());
+    // prng11.get(vals2.data(), vals2.size());
+
+    // Timer timer;
+
+    // timer.setTimePoint("OKVS begin");
+    // // std::vector<block> E(okvs.size());
+
+    // auto E = oc::Matrix<u8>(okvs.size(), bb);
+
+    // okvs.solve<u8>(keys, vals2, E, nullptr, 1);
+
+    // timer.setTimePoint("OKVS end");
+
+    // std::cout << E.size() * sizeof(block) / double(1 << 20) << " MB " << std::endl;
+
+    // RsOprfReceiver recver;
+    // RsOprfSender sender;
+
+    // auto socket1 = coproto::AsioSocket::makePair();
+
+    // timer.setTimePoint("OPRF end");
+
+    // std::thread send1([&]() { coproto::sync_wait(sender.send(test_size, prng11, socket1[1])); });
+
+    // std::thread recv1([&]() {
+    //     std::vector<block> outputs(test_size);
+    //     coproto::sync_wait(recver.receive(keys, outputs, prng11, socket1[0]));
+    // });
+
+    // send1.join();
+    // recv1.join();
+
+    // std::cout << (socket1[0].bytesReceived() + socket1[0].bytesSent()) * 1.0 / double(1 << 20) << " MB" << std::endl;
+
+    // timer.setTimePoint("OPRF end");
+
+    // std::cout << timer << std::endl;
+
+    // return 0;
 
     // auto chl = coproto::AsioSocket::makePair();
 
@@ -354,24 +414,25 @@ int main(int argc, char **argv)
 
     // return 0;
 
-    // volePSI::Baxos paxos;
-    // volePSI::u64 n = 1 << 20;
-    // u64 c = 128;
+    volePSI::u64 n = 1ull << cmd.getOr("nn", 10);
 
-    // paxos.init(n, n / 4, 3, 40, volePSI::PaxosParam::Binary, oc::ZeroBlock);
+    // volePSI::Baxos paxos;
+    // u64 c = 32;
+
+    // paxos.init(n, 1 << 14, 3, 40, volePSI::PaxosParam::Binary, oc::ZeroBlock);
 
     // std::vector<oc::block> keys(n);
     // // std::vector<oc::block> vals(n);
     // // std::vector<oc::block> encodings(paxos.size());
 
-    // oc::PRNG prng(oc::sysRandomSeed());
+    oc::PRNG prng(oc::sysRandomSeed());
 
     // oc::Matrix<u8> values(n, c), values2(n, c), p(paxos.size(), c);
 
     // prng.get(keys.data(), keys.size());
     // prng.get(values.data(), values.size());
 
-    // osuCrypto::Timer time;
+    osuCrypto::Timer time;
     // time.setTimePoint("begin encode");
 
     // // paxos.solve<oc::block>(keys, vals, encodings, &prng, 1);
@@ -380,62 +441,161 @@ int main(int argc, char **argv)
     // time.setTimePoint("end encode");
     // std::cout << time << std::endl;
 
-    u64 n = 1 << 24;
-
-    MillionaireProtocolRecver recver(n, 64, 4);
-    MillionaireProtocolSender sender(n, 64, 4);
+    SilentOtExtReceiver recv;
+    SilentOtExtSender send;
 
     auto socket = coproto::AsioSocket::makePair();
 
-    oc::PRNG prng(oc::sysRandomSeed());
+    recv.configure(n);
+    recv.mMultType = osuCrypto::MultType::ExConv7x24;
+    send.configure(n);
+    send.mMultType = osuCrypto::MultType::ExConv7x24;
 
-    std::vector<u64> data0(n);
-    std::vector<u64> data1(n);
-    std::vector<u8> outs0(n);
-    std::vector<u8> outs1(n);
+    std::thread setupThr0([&]() {
+        PRNG prng(oc::sysRandomSeed());
+        coproto::sync_wait(recv.genSilentBaseOts(prng, socket[0]));
+    });
 
-    std::vector<u64> data0_copy(n);
-    std::vector<u64> data1_copy(n);
+    std::thread setupThr1([&]() {
+        PRNG prng(oc::sysRandomSeed());
+        coproto::sync_wait(send.genSilentBaseOts(prng, socket[1]));
+    });
+    setupThr0.join();
+    setupThr1.join();
 
-    prng.get(data0.data(), n);
-    prng.get(data1.data(), n);
+    time.setTimePoint("begin ot");
 
-    for (auto i = 0; i < n; ++i) {
-        data0[i] = 1;
-        data1[i] = 1;
-        data0_copy[i] = data0[i];
-        data1_copy[i] = data1[i];
-    }
+    std::cout << (socket[0].bytesSent() + socket[0].bytesReceived()) * 1.0 / 1024 / 1024 << std::endl;
 
-    oc::Timer time;
-    auto s = time.setTimePoint("begin cmp");
+    std::thread t0([&]() {
+        BitVector choices(n);
+        std::vector<block> messages(n);
 
-    std::thread recvThr([&]() { recver.drelu(outs0.data(), data0.data(), socket[0]); });
+        coproto::sync_wait(recv.silentReceive(choices, messages, prng, socket[0]));
+    });
 
-    std::thread sendThr([&]() { sender.drelu(outs1.data(), data1.data(), socket[1]); });
+    std::thread t1([&]() {
+        std::vector<std::array<block, 2>> messages(n);
 
-    recvThr.join();
-    sendThr.join();
+        coproto::sync_wait(send.silentSend(messages, prng, socket[1]));
+    });
+    t0.join();
+    t1.join();
 
-    auto e = time.setTimePoint("end cmp");
+    time.setTimePoint("end ot");
+    std::cout << time << std::endl;
+    std::cout << (socket[0].bytesSent() + socket[0].bytesReceived()) * 1.0 / 1024 / 1024 << std::endl;
 
-    int correct = 0;
-    for (u64 i = 0; i < n; ++i) {
-        bool gt = int64_t(data1[i] + data0[i]) > 0;
-        if (gt == ((outs1[i] ^ outs0[i]) & 1))
-            correct++;
-    }
-    std::cout << "correct: " << correct << " / " << n << std::endl;
+    return 0;
 
-    for (u64 i = 0; i < n; i++) {
-        if (data0_copy[i] != data0[i] || data1_copy[i] != data1[i]) {
-            std::cout << "data changed at " << i << std::endl;
-        }
-    }
+    std::vector<block> input0(n);
+    std::vector<block> input1(n);
 
-    auto comm = socket[0].bytesReceived() + socket[0].bytesSent();
-    auto comp = std::chrono::duration_cast<std::chrono::microseconds>(e - s).count();
-    std::cout << "average: " << comm / (n * 1.0) << " bytes" << " " << comp / (n * 1.0) << " microseconds" << std::endl;
+    std::thread eq0([&]() {
+        BitVector out0;
+        ssPEQT(0, input0, out0, socket[0], 1);
+    });
+
+    std::thread eq1([&]() {
+        BitVector out1;
+        ssPEQT(1, input1, out1, socket[1], 1);
+    });
+
+    eq0.join();
+    eq1.join();
+
+    time.setTimePoint("end eq");
+
+    std::cout << time << std::endl;
+    std::cout << (socket[0].bytesSent() + socket[0].bytesReceived()) * 1.0 / 1024 / 1024 << std::endl;
+
+    // SilentOtTriple tripleSend;
+    // SilentOtTriple tripleRecv;
+
+    // tripleRecv.init(0, n);
+    // tripleSend.init(1, n);
+
+    // std::thread tripleRecvThr([&]() {
+    //     PRNG prng(oc::sysRandomSeed());
+    //     coproto::sync_wait(tripleRecv.genBaseOts(prng, socket[0]));
+
+    //     std::vector<block> a(n / 128), b(n / 128), c(n / 128);
+
+    //     coproto::sync_wait(tripleRecv.expand(a, b, c, prng, socket[0]));
+    // });
+
+    // std::thread tripleSendThr([&]() {
+    //     PRNG prng(oc::sysRandomSeed());
+    //     coproto::sync_wait(tripleSend.genBaseOts(prng, socket[1]));
+
+    //     std::vector<block> a(n / 128), b(n / 128), c(n / 128);
+
+    //     coproto::sync_wait(tripleSend.expand(a, b, c, prng, socket[1]));
+    // });
+
+    // tripleRecvThr.join();
+    // tripleSendThr.join();
+
+    // time.setTimePoint("end triple");
+
+    // std::cout << (socket[0].bytesSent() + socket[0].bytesReceived()) * 1.0 / 1024 / 1024 << std::endl;
+
+    // u64 n = 1 << 24;
+
+    // MillionaireProtocolRecver recver(n, 64, 4);
+    // MillionaireProtocolSender sender(n, 64, 4);
+
+    // auto socket = coproto::AsioSocket::makePair();
+
+    // oc::PRNG prng(oc::sysRandomSeed());
+
+    // std::vector<u64> data0(n);
+    // std::vector<u64> data1(n);
+    // std::vector<u8> outs0(n);
+    // std::vector<u8> outs1(n);
+
+    // std::vector<u64> data0_copy(n);
+    // std::vector<u64> data1_copy(n);
+
+    // prng.get(data0.data(), n);
+    // prng.get(data1.data(), n);
+
+    // for (auto i = 0; i < n; ++i) {
+    //     data0[i] = 1;
+    //     data1[i] = 1;
+    //     data0_copy[i] = data0[i];
+    //     data1_copy[i] = data1[i];
+    // }
+
+    // oc::Timer time;
+    // auto s = time.setTimePoint("begin cmp");
+
+    // std::thread recvThr([&]() { recver.drelu(outs0.data(), data0.data(), socket[0]); });
+
+    // std::thread sendThr([&]() { sender.drelu(outs1.data(), data1.data(), socket[1]); });
+
+    // recvThr.join();
+    // sendThr.join();
+
+    // auto e = time.setTimePoint("end cmp");
+
+    // int correct = 0;
+    // for (u64 i = 0; i < n; ++i) {
+    //     bool gt = int64_t(data1[i] + data0[i]) > 0;
+    //     if (gt == ((outs1[i] ^ outs0[i]) & 1))
+    //         correct++;
+    // }
+    // std::cout << "correct: " << correct << " / " << n << std::endl;
+
+    // for (u64 i = 0; i < n; i++) {
+    //     if (data0_copy[i] != data0[i] || data1_copy[i] != data1[i]) {
+    //         std::cout << "data changed at " << i << std::endl;
+    //     }
+    // }
+
+    // auto comm = socket[0].bytesReceived() + socket[0].bytesSent();
+    // auto comp = std::chrono::duration_cast<std::chrono::microseconds>(e - s).count();
+    // std::cout << "average: " << comm / (n * 1.0) << " bytes" << " " << comp / (n * 1.0) << " microseconds" << std::endl;
 
     // u64 n = 1 << 18;
 

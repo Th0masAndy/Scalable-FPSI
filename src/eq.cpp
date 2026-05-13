@@ -1,4 +1,5 @@
 #include "eq.h"
+#include <cryptoTools/Common/Timer.h>
 #include <cryptoTools/Common/block.h>
 #include <vector>
 #include <volePSI/GMW/Circuit.h>
@@ -76,7 +77,9 @@ void ssPEQT(u32 idx, std::vector<block> &input, oc::BitVector &out, Socket &chl,
     auto cir = volePSI::isZeroCircuit(keyBitLength);
 
     // volePSI::BetaCircuit cir = volePSI::isZeroCircuit(keyBitLength);
+    Timer t;
     volePSI::Gmw cmp;
+    cmp.setTimer(t);
     cmp.init(mLabel.rows(), cir, numThreads, idx, prng.get());
 
     if (idx == 1) {
@@ -86,6 +89,10 @@ void ssPEQT(u32 idx, std::vector<block> &input, oc::BitVector &out, Socket &chl,
     }
 
     coproto::sync_wait(cmp.run(chl));
+
+    if (idx == 1) {
+        std::cout << t << std::endl;
+    }
 
     oc::Matrix<u8> mOut;
     mOut.resize(numBins, 1);
