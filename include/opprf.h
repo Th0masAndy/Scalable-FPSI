@@ -1,8 +1,10 @@
+#pragma once
+
+#include <coproto/Socket/Socket.h>
 #include <cryptoTools/Common/block.h>
+#include <cryptoTools/Crypto/PRNG.h>
 #include <cstddef>
 #include <vector>
-#include <volePSI/Defines.h>
-#include <volePSI/Paxos.h>
 #include "utils.h"
 #include "volePSI/RsOpprf.h"
 

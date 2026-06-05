@@ -1,5 +1,9 @@
 #include <coproto/Socket/AsioSocket.h>
+#include <cryptoTools/Common/BitVector.h>
 #include <cryptoTools/Common/CuckooIndex.h>
+#include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
+#include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
+#include <thread>
 #include "cmp.h"
 #include "eq.h"
 #include "mul.h"
@@ -9,6 +13,8 @@
 #include "permute.h"
 #include "sparsehash/dense_hash_map"
 #include "utils.h"
+
+using namespace volePSI;
 
 void normL1(
     oc::span<u64> x,
@@ -430,7 +436,7 @@ void fpsiLowLpPx(const oc::CLP &cmd)
                 keys.push_back(prng.get<block>());
             }
 
-            auto sIdx = SimpleIndex{};
+            auto sIdx = volePSI::SimpleIndex{};
             auto params = oc::CuckooIndex<>::selectParams(n, 40, 0, 3);
             auto numBins = params.numBins();
             sIdx.init(numBins, keys.size(), 40, 3);

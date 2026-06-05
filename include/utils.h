@@ -8,8 +8,10 @@
 #include <cryptoTools/Common/block.h>
 #include <cryptoTools/Crypto/AES.h>
 #include <cstddef>
+#include <cstdint>
 #include <emmintrin.h>
 #include <libOTe/TwoChooseOne/ConfigureCode.h>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 

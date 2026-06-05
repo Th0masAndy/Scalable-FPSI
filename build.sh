@@ -1,3 +1,4 @@
+mkdir -p thirdparty
 cd thirdparty
 
 ## Build volePSI

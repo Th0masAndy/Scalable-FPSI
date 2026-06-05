@@ -1,8 +1,10 @@
 #pragma once
 #include <coproto/Socket/Socket.h>
-#include <cryptoTools/Common/block.h>
+#include <cryptoTools/Crypto/PRNG.h>
+#include <cstdint>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
+#include <vector>
 
 class MulSender {
 public:

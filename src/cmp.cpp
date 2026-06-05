@@ -1,11 +1,8 @@
 #include "cmp.h"
 #include <coproto/Common/macoro.h>
 #include <cryptoTools/Common/BitVector.h>
-#include <cryptoTools/Common/Defines.h>
-#include <libOTe/Tools/Coproto.h>
-#include <libOTe/Triple/SilentOtTriple/SilentOtTriple.h>
+#include <cstring>
 #include <vector>
-#include <volePSI/Defines.h>
 
 // void CmpSender::compare(std::vector<u64> &data, std::vector<u8> &out, Socket &chl)
 // {

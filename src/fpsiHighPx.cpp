@@ -1,5 +1,6 @@
 #include <coproto/Socket/AsioSocket.h>
 #include <cryptoTools/Common/CuckooIndex.h>
+#include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <thread>
 #include <vector>
@@ -10,6 +11,8 @@
 #include "params.h"
 #include "sparsehash/dense_hash_map"
 #include "utils.h"
+
+using namespace volePSI;
 
 void normL1(std::vector<u64> x, std::vector<u64> y, std::vector<u8> &choiceBit, u64 d, int delta, std::array<coproto::AsioSocket, 2> &chl);
 void normL2(oc::span<u64> x, oc::span<u64> y, std::vector<u8> &choiceBit, u64 d, int delta, std::array<coproto::AsioSocket, 2> &chl);
@@ -382,7 +385,7 @@ void fpsiHighLpPx(const oc::CLP &cmd)
         std::vector<u32> cuckooMap(n);
 
         std::thread matchSendThr([&]() {
-            auto sIdx = SimpleIndex{};
+            auto sIdx = volePSI::SimpleIndex{};
             auto params = oc::CuckooIndex<>::selectParams(rand_R.size(), 40, 0, 3);
             auto numBins = params.numBins();
             sIdx.init(numBins, rand_S.size(), 40, 3);

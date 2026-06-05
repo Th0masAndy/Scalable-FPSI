@@ -1,5 +1,7 @@
 #include "permute.h"
 #include <cstdint>
+#include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
+#include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <stack>
 
 using namespace oc;

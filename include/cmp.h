@@ -1,12 +1,12 @@
+#include <coproto/Socket/Socket.h>
 #include <cryptoTools/Common/Defines.h>
-#include <cryptoTools/Common/block.h>
+#include <cryptoTools/Crypto/PRNG.h>
+#include <cstdint>
 #include <libOTe/Triple/SilentOtTriple/SilentOtTriple.h>
+#include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <utils.h>
-#include <volePSI/Defines.h>
-#include <volePSI/Paxos.h>
 
-using namespace volePSI;
 using namespace oc;
 
 const u64 M = 4;

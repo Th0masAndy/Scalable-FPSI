@@ -1,16 +1,12 @@
-#include <coproto/Common/macoro.h>
 #include <coproto/Socket/AsioSocket.h>
-#include <coproto/Socket/Socket.h>
-#include <cryptoTools/Common/BitVector.h>
-#include <cryptoTools/Common/Defines.h>
 #include <cryptoTools/Common/Timer.h>
-#include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
-#include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
+#include <chrono>
+#include <iostream>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 #include "cmp.h"
 #include "opprf.h"
-#include "proto.h"
 
 void opprf_test()
 {

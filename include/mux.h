@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cryptoTools/Common/BitVector.h>
+#include <coproto/Socket/Socket.h>
+#include <cstdint>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <vector>
-#include <volePSI/Defines.h>
 #include "utils.h"
 
 class MuxSender {

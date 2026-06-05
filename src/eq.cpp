@@ -1,7 +1,6 @@
 #include "eq.h"
 #include <cryptoTools/Common/Timer.h>
 #include <cryptoTools/Common/block.h>
-#include <vector>
 #include <volePSI/GMW/Circuit.h>
 #include <volePSI/GMW/Gmw.h>
 

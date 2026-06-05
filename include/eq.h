@@ -1,6 +1,6 @@
 #pragma once
 #include <coproto/Socket/Socket.h>
-#include <sys/types.h>
+#include <cryptoTools/Common/BitVector.h>
 #include <vector>
 #include "utils.h"
 #include "volePSI/RsPsi.h"
