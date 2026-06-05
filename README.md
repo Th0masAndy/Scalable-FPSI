@@ -115,7 +115,7 @@ Run baseline variants:
 
 ## Baseline Implementations
 
-The repository includes BP25-style baseline entry points in `src/bp25Px.cpp` and `src/bp25High.cpp`.
+The repository includes [BP25](https://eprint.iacr.org/2025/911) baseline in `src/bp25Px.cpp` and `src/bp25High.cpp`.
 
 The external artifact used for comparison: 
 
