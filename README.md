@@ -18,7 +18,7 @@ This repository provides a research implementation of fuzzy private set intersec
 - Linux on **AMD64/x86_64**. The CMake target enables AES/PCLMUL/SSE flags on x86 systems.
 - A C++20 compiler, CMake, Make, Git, and Python 3.
 - Third-party libraries installed under `thirdparty/out/install` by [build.sh](./build.sh):
-  - [volePSI](https://github.com/ladnir/volepsi), including cryptoTools, libOTe, coproto, macoro, and sparsehash dependencies fetched by volePSI's build.
+  - [volePSI](thirdparty/volepsi), including cryptoTools, libOTe, coproto, macoro, and sparsehash dependencies fetched by volePSI's build. (We slightly modified the source code of RsOpprf and RsOprf to enable large inputs)
   - [BLAKE3](https://github.com/BLAKE3-team/BLAKE3).
 
 - **System packages commonly needed for local builds:**
@@ -140,10 +140,10 @@ This project builds on the following open-source libraries and research codebase
 If you make use of our work, please consider citing us:
 
 ```bibtex
-@INPROCEEDINGS{
-    author = { Yang, Xinpeng and Hao, Meng and Weng, Chenkai and Deng, Robert H. and Wen, Yonggang and Zhang, Tianwei },
-    booktitle = { 2026 IEEE Symposium on Security and Privacy (SP) },
-    title = {{ Efficient Fuzzy Private Set Intersection from Secret-shared OPRF }},
+@inproceedings{hao2026scalable,
+    author = {Hao, Meng and Yang, Xinpeng and Chen, Hanxiao and Zhang, Tianwei and Xue, Haiyang and Yang, Guomin and Li, Hongwei and Deng, Robert H.},
+    title = {{Towards Scalable Fuzzy PSI via Efficient Fuzzy Matching}},
+    booktitle = {Proceedings of the 2026 ACM SIGSAC Conference on Computer and Communications Security (CCS)},
     year = {2026},
 }
 ```
