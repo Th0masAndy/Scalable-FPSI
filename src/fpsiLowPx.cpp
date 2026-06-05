@@ -463,7 +463,7 @@ void fpsiLowLpPx(const oc::CLP &cmd)
                     auto corner = shift(all_cells[b], delta, 1);
                     for (u64 k = 0; k < d; ++k) {
                         u64 mask_i = 0;
-                        memcpy(&mask_i, maskPtr + 8 + k * bytesLen, bytesLen);
+                        memcpy(&mask_i, maskPtr + k * bytesLen, bytesLen);
                         y[i * d + k] = mask_i;
                         u64 val = recvSet[mMapping[b]][k] - corner[k] + mask_i;
                         memcpy(ptr + 8 + k * bytesLen, &val, bytesLen);
@@ -481,26 +481,12 @@ void fpsiLowLpPx(const oc::CLP &cmd)
         sendThr.join();
         recvThr.join();
 
-        // for (u64 i = 0; i < interSize; i++) {
-        //     u64 idx = cuckooMap[i];
-        //     std::cout << tag_s[idx] << " " << tag_r[idx] << std::endl;
-        //     for (size_t j = 0; j < d; j++) {
-        //         std::cout << int64_t(x[idx * d + j] + y[idx * d + j]) << std::endl;
-        //     }
-        // }
-
-        // for (u64 i = 0; i < tag_r.size(); i++) {
-        //     if (tag_r[i] == tag_s[i]) {
-        //         std::cout << "match at index " << i << std::endl;
-        //     }
-        // }
-
         auto t_matching = time.setTimePoint("matching done");
 
-        std::cout << "matching time: " << std::chrono::duration_cast<std::chrono::microseconds>(t_matching - s).count() / double(1000 * 1000) << " seconds"
-                  << std::endl;
+        // std::cout << "matching time: " << std::chrono::duration_cast<std::chrono::microseconds>(t_matching - s).count() / double(1000 * 1000) << " seconds"
+        //           << std::endl;
 
-        std::cout << "comm after matching: " << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
+        // std::cout << "comm after matching: " << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
 
         std::vector<u8> resBits0(x.size() / d, 0);
         std::vector<u8> resBits1(y.size() / d, 0);
@@ -518,12 +504,6 @@ void fpsiLowLpPx(const oc::CLP &cmd)
         }
 
         time.setTimePoint("norm done");
-
-        // for (u64 i = 0; i < resBits0.size(); i++) {
-        //     if ((resBits0[i] ^ resBits1[i]) & 1) {
-        //         std::cout << "match at index " << i << std::endl;
-        //     }
-        // }
 
         std::vector<u8> andRes0;
         std::vector<u8> andRes1;
@@ -695,15 +675,6 @@ void fpsiLowLpPx(const oc::CLP &cmd)
 
         time.setTimePoint("AND done");
 
-        // auto counter = 0;
-        // for (u64 i = 0; i < andRes0.size(); i++) {
-        //     if ((andRes0[i] ^ andRes1[i]) & 1) {
-        //         std::cout << "match at index " << i << std::endl;
-        //         counter++;
-        //     }
-        // }
-        // std::cout << "total match num: " << counter << std::endl;
-
         BitVector finalBits(andRes0.size());
         BitVector output0;
         BitVector output1;
@@ -870,7 +841,7 @@ void normL0(
             for (u64 j = 0; j < n; ++j) {
                 curr[j] = abs[j * d + i] - dis_max[j];
             }
-            sender2.compare(compare_res.data(), curr.data(), chl[1]);
+            sender2.drelu(compare_res.data(), curr.data(), chl[1]);
             mux2.muxA(compare_res, curr, res, bitsLen);
             for (u64 j = 0; j < n; ++j) {
                 dis_max[j] += res[j];

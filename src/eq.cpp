@@ -90,9 +90,9 @@ void ssPEQT(u32 idx, std::vector<block> &input, oc::BitVector &out, Socket &chl,
 
     coproto::sync_wait(cmp.run(chl));
 
-    if (idx == 1) {
-        std::cout << t << std::endl;
-    }
+    // if (idx == 1) {
+    //     std::cout << t << std::endl;
+    // }
 
     oc::Matrix<u8> mOut;
     mOut.resize(numBins, 1);

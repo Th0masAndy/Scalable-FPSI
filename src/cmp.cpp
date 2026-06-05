@@ -115,8 +115,8 @@ MillionaireProtocolSender::MillionaireProtocolSender(int num_cmps, int bitlength
 
     configure(bitlength, radix_base);
 
-    otpack = new NcoOTSender(this->num_digits * roundUpTo(this->num_cmps, 8));
-    num_triples_round = roundUpTo(this->num_triples * roundUpTo(this->num_cmps, 8), 128);
+    otpack = new NcoOTSender(this->num_digits * roundUpTo(this->num_cmps, 128));
+    num_triples_round = roundUpTo(this->num_triples * roundUpTo(this->num_cmps, 128), 128);
     triple_gen = new SilentOtTriple();
     triple_gen->init(1, num_triples_round);
 }
@@ -176,57 +176,63 @@ void MillionaireProtocolSender::compare(uint8_t *res, uint64_t *data, osuCrypto:
 
     int origin_num_cmps = num_cmps;
     // num_cmps should be a multiple of 8
-    num_cmps = ceil(num_cmps / 8.0) * 8;
+    int padded_num_cmps = roundUpTo(origin_num_cmps, 128);
 
     uint64_t *data_ext;
-    if (origin_num_cmps == num_cmps)
+    if (origin_num_cmps == padded_num_cmps)
         data_ext = data;
     else {
-        data_ext = new uint64_t[num_cmps];
+        data_ext = new uint64_t[padded_num_cmps];
         memcpy(data_ext, data, origin_num_cmps * sizeof(uint64_t));
-        memset(data_ext + origin_num_cmps, 0, (num_cmps - origin_num_cmps) * sizeof(uint64_t));
+        memset(data_ext + origin_num_cmps, 0, (padded_num_cmps - origin_num_cmps) * sizeof(uint64_t));
     }
 
     uint8_t *digits;       // num_digits * num_cmps
     uint8_t *leaf_res_cmp; // num_digits * num_cmps
     uint8_t *leaf_res_eq;  // num_digits * num_cmps
 
-    digits = new uint8_t[num_digits * num_cmps];
-    leaf_res_cmp = new uint8_t[num_digits * num_cmps];
-    leaf_res_eq = new uint8_t[num_digits * num_cmps];
+    digits = new uint8_t[num_digits * padded_num_cmps];
+    leaf_res_cmp = new uint8_t[num_digits * padded_num_cmps];
+    leaf_res_eq = new uint8_t[num_digits * padded_num_cmps];
 
     // Extract radix-digits from data
     for (int i = 0; i < num_digits; i++) // Stored from LSB to MSB
-        for (int j = 0; j < num_cmps; j++)
-            digits[i * num_cmps + j] = (uint8_t)(data_ext[j] >> i * beta) & mask_beta;
+        for (int j = 0; j < padded_num_cmps; j++)
+            digits[i * padded_num_cmps + j] = (uint8_t)(data_ext[j] >> i * beta) & mask_beta;
 
     {
         uint8_t **leaf_ot_messages; // (num_digits * num_cmps) X beta_pow (=2^beta)
-        leaf_ot_messages = new uint8_t *[num_digits * num_cmps];
-        for (int i = 0; i < num_digits * num_cmps; i++)
+        leaf_ot_messages = new uint8_t *[num_digits * padded_num_cmps];
+        for (int i = 0; i < num_digits * padded_num_cmps; i++)
             leaf_ot_messages[i] = new uint8_t[beta_pow];
 
         // Set Leaf OT messages
-        prng->get((uint8_t *)leaf_res_cmp, num_digits * num_cmps);
-        prng->get((uint8_t *)leaf_res_eq, num_digits * num_cmps);
+        prng->get((uint8_t *)leaf_res_cmp, num_digits * padded_num_cmps);
+        prng->get((uint8_t *)leaf_res_eq, num_digits * padded_num_cmps);
 
-        for (int i = 0; i < num_digits * num_cmps; i++) {
+        for (int i = 0; i < num_digits * padded_num_cmps; i++) {
             leaf_res_cmp[i] &= 1;
             leaf_res_eq[i] &= 1;
         }
 
         for (int i = 0; i < num_digits; i++) {
-            for (int j = 0; j < num_cmps; j++) {
+            for (int j = 0; j < padded_num_cmps; j++) {
                 if (i == 0) {
                     set_leaf_ot_messages(
-                        leaf_ot_messages[i * num_cmps + j], digits[i * num_cmps + j], beta_pow, leaf_res_cmp[i * num_cmps + j], 0, greater_than, false);
+                        leaf_ot_messages[i * padded_num_cmps + j],
+                        digits[i * padded_num_cmps + j],
+                        beta_pow,
+                        leaf_res_cmp[i * padded_num_cmps + j],
+                        0,
+                        greater_than,
+                        false);
                 } else {
                     set_leaf_ot_messages(
-                        leaf_ot_messages[i * num_cmps + j],
-                        digits[i * num_cmps + j],
+                        leaf_ot_messages[i * padded_num_cmps + j],
+                        digits[i * padded_num_cmps + j],
                         beta_pow,
-                        leaf_res_cmp[i * num_cmps + j],
-                        leaf_res_eq[i * num_cmps + j],
+                        leaf_res_cmp[i * padded_num_cmps + j],
+                        leaf_res_eq[i * padded_num_cmps + j],
                         greater_than);
                 }
             }
@@ -238,18 +244,18 @@ void MillionaireProtocolSender::compare(uint8_t *res, uint64_t *data, osuCrypto:
         otpack->send(leaf_ot_messages, chl);
 
         // Cleanup
-        for (int i = 0; i < num_digits * num_cmps; i++)
+        for (int i = 0; i < num_digits * padded_num_cmps; i++)
             delete[] leaf_ot_messages[i];
         delete[] leaf_ot_messages;
     }
 
-    traverse_and_compute_ANDs(*triple_gen, num_cmps, leaf_res_eq, leaf_res_cmp, chl);
+    traverse_and_compute_ANDs(*triple_gen, padded_num_cmps, leaf_res_eq, leaf_res_cmp, chl);
 
     for (int i = 0; i < origin_num_cmps; i++)
         res[i] = leaf_res_cmp[i];
 
     // Cleanup
-    if (origin_num_cmps != num_cmps)
+    if (origin_num_cmps != padded_num_cmps)
         delete[] data_ext;
     delete[] digits;
     delete[] leaf_res_cmp;
@@ -494,8 +500,8 @@ MillionaireProtocolRecver::MillionaireProtocolRecver(int num_cmps, int bitlength
 
     configure(bitlength, radix_base);
 
-    otpack = new NcoOTRecver(this->num_digits * roundUpTo(this->num_cmps, 8));
-    num_triples_round = roundUpTo(this->num_triples * roundUpTo(this->num_cmps, 8), 128);
+    otpack = new NcoOTRecver(this->num_digits * roundUpTo(this->num_cmps, 128));
+    num_triples_round = roundUpTo(this->num_triples * roundUpTo(this->num_cmps, 128), 128);
     triple_gen = new SilentOtTriple();
     triple_gen->init(0, num_triples_round);
 }
@@ -556,29 +562,29 @@ void MillionaireProtocolRecver::compare(uint8_t *res, uint64_t *data, osuCrypto:
 
     int origin_num_cmps = num_cmps;
     // num_cmps should be a multiple of 8
-    num_cmps = ceil(num_cmps / 8.0) * 8;
+    int padded_num_cmps = roundUpTo(origin_num_cmps, 128);
 
     uint64_t *data_ext;
-    if (origin_num_cmps == num_cmps)
+    if (origin_num_cmps == padded_num_cmps)
         data_ext = data;
     else {
-        data_ext = new uint64_t[num_cmps];
+        data_ext = new uint64_t[padded_num_cmps];
         memcpy(data_ext, data, origin_num_cmps * sizeof(uint64_t));
-        memset(data_ext + origin_num_cmps, 0, (num_cmps - origin_num_cmps) * sizeof(uint64_t));
+        memset(data_ext + origin_num_cmps, 0, (padded_num_cmps - origin_num_cmps) * sizeof(uint64_t));
     }
 
     uint8_t *digits;       // num_digits * num_cmps
     uint8_t *leaf_res_cmp; // num_digits * num_cmps
     uint8_t *leaf_res_eq;  // num_digits * num_cmps
 
-    digits = new uint8_t[num_digits * num_cmps];
-    leaf_res_cmp = new uint8_t[num_digits * num_cmps];
-    leaf_res_eq = new uint8_t[num_digits * num_cmps];
+    digits = new uint8_t[num_digits * padded_num_cmps];
+    leaf_res_cmp = new uint8_t[num_digits * padded_num_cmps];
+    leaf_res_eq = new uint8_t[num_digits * padded_num_cmps];
 
     // Extract radix-digits from data
     for (int i = 0; i < num_digits; i++) // Stored from LSB to MSB
-        for (int j = 0; j < num_cmps; j++)
-            digits[i * num_cmps + j] = (uint8_t)(data_ext[j] >> i * beta) & mask_beta;
+        for (int j = 0; j < padded_num_cmps; j++)
+            digits[i * padded_num_cmps + j] = (uint8_t)(data_ext[j] >> i * beta) & mask_beta;
 
     { // party = sci::BOB
       // Perform Leaf OTs
@@ -586,19 +592,19 @@ void MillionaireProtocolRecver::compare(uint8_t *res, uint64_t *data, osuCrypto:
         otpack->recv(leaf_res_cmp, digits, chl);
 
         // Extract equality result from leaf_res_cmp
-        for (int i = num_cmps; i < num_digits * num_cmps; i++) {
+        for (int i = padded_num_cmps; i < num_digits * padded_num_cmps; i++) {
             leaf_res_eq[i] = leaf_res_cmp[i] & 1;
             leaf_res_cmp[i] >>= 1;
         }
     }
 
-    traverse_and_compute_ANDs(*triple_gen, num_cmps, leaf_res_eq, leaf_res_cmp, chl);
+    traverse_and_compute_ANDs(*triple_gen, padded_num_cmps, leaf_res_eq, leaf_res_cmp, chl);
 
     for (int i = 0; i < origin_num_cmps; i++)
         res[i] = leaf_res_cmp[i];
 
     // Cleanup
-    if (origin_num_cmps != num_cmps)
+    if (origin_num_cmps != padded_num_cmps)
         delete[] data_ext;
     delete[] digits;
     delete[] leaf_res_cmp;
