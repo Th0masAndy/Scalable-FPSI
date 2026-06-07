@@ -131,8 +131,7 @@ This project builds on the following open-source libraries and research codebase
 
 - [volePSI](https://github.com/ladnir/volepsi), libOTe, cryptoTools, coproto, and macoro for cryptographic protocol primitives.
 - [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) for hashing.
-- Components inspired by OpenCheetah-style millionaire comparison code.
-- The external comparison artifact [asu-crypto/daOT-fuzzyPSI](https://github.com/asu-crypto/daOT-fuzzyPSI).
+- Components inspired by [OpenCheetah](https://github.com/Alibaba-Gemini-Lab/OpenCheetah) millionaire comparison code.
 
 
 ## Citation

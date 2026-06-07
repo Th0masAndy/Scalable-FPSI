@@ -1,9 +1,11 @@
+#include <algorithm>
 #include <coproto/Socket/AsioSocket.h>
 #include <cryptoTools/Common/BitVector.h>
 #include <cryptoTools/Common/CuckooIndex.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <thread>
+#include "and.h"
 #include "cmp.h"
 #include "eq.h"
 #include "mul.h"
@@ -15,6 +17,26 @@
 #include "utils.h"
 
 using namespace volePSI;
+
+namespace {
+std::vector<block> tagsToBlocks(const std::vector<u64> &tags)
+{
+    std::vector<block> blocks(tags.size());
+    for (u64 i = 0; i < tags.size(); ++i) {
+        blocks[i] = block(tags[i], tags[i]);
+    }
+    return blocks;
+}
+
+std::vector<u8> bitVectorToBytes(const BitVector &bits)
+{
+    std::vector<u8> out(bits.size());
+    for (u64 i = 0; i < bits.size(); ++i) {
+        out[i] = static_cast<u8>(bits[i]);
+    }
+    return out;
+}
+} // namespace
 
 void normL1(
     oc::span<u64> x,
@@ -83,194 +105,6 @@ void sampleData(std::vector<std::vector<u64>> &sendSet, std::vector<std::vector<
     }
 }
 
-void fpsiLowPx(const oc::CLP &cmd)
-{
-    u64 n = cmd.getOr("n", 1ull << cmd.getOr("nn", 10));
-    size_t d = cmd.getOr("d", 2);
-    int delta = cmd.getOr("delta", 2);
-    int verbose = cmd.getOr("v", 0);
-
-    int numTry = cmd.getOr("try", 1);
-
-    int prefixNum = static_cast<int>(std::ceil(std::log2(delta * 2 + 1)));
-    int prefixLen = static_cast<int>(std::floor(std::log2(delta * 2 + 1))) + 1;
-    int interSize = cmd.getOr("nn", 4);
-
-    PRNG prng(sysRandomSeed());
-    std::vector<std::vector<u64>> recvSet;
-    std::vector<block> recvListKey;
-    std::vector<block> recvListVal;
-    std::vector<block> rand_R(n * (1 << d), ZeroBlock);
-    std::vector<block> g(n * d * (1 << d) * prefixNum);
-    std::vector<block> s_R(n * d * (1 << d));
-    prng.get(s_R.data(), s_R.size());
-
-    std::vector<std::vector<u64>> sendSet;
-    std::vector<block> sendListKey;
-    std::vector<block> sendListVal;
-    std::vector<block> rand_S(n, ZeroBlock);
-    std::vector<block> r_S(n * d);
-    prng.get(r_S.data(), r_S.size());
-
-    sampleData(sendSet, recvSet, delta, n, d, prng);
-
-    oc::Timer time;
-    time.setTimePoint("begin");
-
-    for (size_t i = 0; i < recvSet.size(); i++) {
-        auto neighbors = neigh(recvSet[i], delta);
-        for (int j = 0; j < d; j++) {
-            auto prefixes = getPrefixSet(recvSet[i][j], prefixLenMapNaive.at(2 * delta));
-            for (auto neighbor : neighbors) {
-                for (auto prefix : prefixes) {
-                    recvListKey.push_back(blake3_hash(neighbor, j, prefix));
-                }
-            }
-        }
-    }
-
-    for (size_t i = 0; i < sendSet.size(); i++) {
-        for (int j = 0; j < d; j++) {
-            auto prefixes = getIntervalPrefixSet(sendSet[i][j] - delta, sendSet[i][j] + delta, prefixLenMapNaive.at(2 * delta));
-            for (auto prefix : prefixes) {
-                sendListKey.push_back(blake3_hash(cell(sendSet[i], 2 * delta), j, prefix));
-                sendListVal.push_back(r_S[i * d + j]);
-            }
-        }
-    }
-
-    while (sendListKey.size() < n * d * prefixLen) {
-        sendListKey.push_back(prng.get<block>());
-        sendListVal.push_back(prng.get<block>());
-    }
-
-    auto s = time.setTimePoint("preprocess done");
-
-    auto socket = coproto::AsioSocket::makePair();
-
-    std::thread recvThr([&]() {
-        OpprfRevcer recver(n * d * (1 << d) * prefixNum, n * d * prefixLen);
-        recver.setTimer(time);
-        recver.recv(recvListKey, g, socket[0]);
-    });
-
-    std::thread sendThr([&]() {
-        OpprfSender sender(n * d * (1 << d) * prefixNum, n * d * prefixLen);
-        sender.setTimer(time);
-        sender.send(sendListKey, sendListVal, socket[1]);
-    });
-
-    recvThr.join();
-    sendThr.join();
-
-    time.setTimePoint("first OPPRF done");
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
-
-    std::thread recvThrReverse([&]() {
-        std::vector<block> inputKeys(g.size());
-        std::vector<block> outputVals(g.size());
-        for (u64 i = 0; i < g.size(); i++) {
-            inputKeys[i] = g[i];
-            outputVals[i] = s_R[i / prefixNum];
-        }
-
-        OpprfSender sender(n * d, n * d * (1 << d) * prefixNum);
-        sender.setTimer(time);
-        sender.send(inputKeys, outputVals, socket[0]);
-
-        for (int i = 0; i < rand_R.size(); i++) {
-            for (int j = 0; j < d; j++) {
-                rand_R[i] += s_R[i / (1 << d) * d * (1 << d) + i % (1 << d) + j * (1 << d)];
-            }
-        }
-    });
-
-    std::thread sendThrReverse([&]() {
-        std::vector<block> out(r_S.size());
-
-        OpprfRevcer recver(n * d, n * d * (1 << d) * prefixNum);
-        recver.setTimer(time);
-        recver.recv(r_S, out, socket[1]);
-
-        for (int i = 0; i < rand_S.size(); i++) {
-            for (int j = 0; j < d; j++) {
-                rand_S[i] += out[i * d + j];
-            }
-        }
-    });
-
-    recvThrReverse.join();
-    sendThrReverse.join();
-
-    time.setTimePoint("second OPPRF done");
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
-
-    std::thread sendMaskThr([&]() {
-        PRNG prng;
-        auto len = d * sizeof(u64);
-        auto numBlocks = (len + sizeof(block) - 1) / sizeof(block);
-
-        std::vector<u8> buffer(len * n);
-        for (int i = 0; i < n; i++) {
-            prng.SetSeed(rand_S[i], numBlocks);
-            std::vector<u8> tmp(len);
-            prng.get(tmp.data(), len);
-            for (int j = 0; j < len; j++) {
-                buffer[i * len + j] = tmp[j] ^ ((u8 *)&sendSet[i][0])[j];
-            }
-        }
-
-        Hash(rand_S);
-
-        coproto::sync_wait(socket[1].send(buffer));
-        coproto::sync_wait(socket[1].send(rand_S));
-    });
-
-    std::thread recvMaskThr([&]() {
-        PRNG prng;
-        auto len = d * sizeof(u64);
-        auto numBlocks = (len + sizeof(block) - 1) / sizeof(block);
-        std::vector<block> rand_S(n, ZeroBlock);
-
-        std::vector<u8> buffer(len * n);
-        coproto::sync_wait(socket[0].recv(buffer));
-        coproto::sync_wait(socket[0].recv(rand_S));
-
-        auto map = google::dense_hash_map<block, u64, NoHash>{};
-        map.resize(rand_R.size());
-        map.set_empty_key(oc::ZeroBlock);
-
-        Hash(rand_R);
-
-        for (auto i = 0; i < rand_R.size(); i++) {
-            map.insert({ rand_R[i], i });
-        }
-
-        for (auto i = 0; i < rand_S.size(); i++) {
-            if (map.find(rand_S[i]) != map.end()) {
-                std::vector<u8> tmp(len);
-                prng.SetSeed(rand_S[i], numBlocks);
-                prng.get(tmp.data(), len);
-                for (int j = 0; j < len; j++) {
-                    tmp[j] ^= buffer[i * len + j];
-                }
-            }
-        }
-    });
-
-    sendMaskThr.join();
-    recvMaskThr.join();
-
-    auto e = time.setTimePoint("wLPSI done");
-
-    if (verbose) {
-        std::cout << time << std::endl;
-    }
-
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() / double(1000 * 1000) << " seconds" << std::endl;
-}
-
 std::vector<u64> shift(const std::vector<u64> &input, int delta, bool isCell = false)
 {
     std::vector<u64> cellId = cell(input, delta * 2);
@@ -308,7 +142,7 @@ void fpsiLowLpPx(const oc::CLP &cmd)
         throw std::runtime_error("unsupported lp norm");
     }
 
-    int bytesLen = divCeil(u, 8);
+    int bytesLen = std::max<int>(2, divCeil(u, 8));
 
     if (verbose) {
         std::cout << "bytesLen: " << bytesLen << std::endl;
@@ -515,165 +349,23 @@ void fpsiLowLpPx(const oc::CLP &cmd)
         std::vector<u8> andRes1;
 
         std::thread andSendThr([&]() {
-            PRNG prng(sysRandomSeed());
-            SilentOtTriple tripleGen;
-            u64 numTriples = roundUpTo(resBits0.size(), 128);
-            tripleGen.init(1, numTriples);
-            coproto::sync_wait(tripleGen.genBaseOts(prng, socket[1]));
-
-            std::vector<block> A(numTriples / 128);
-            std::vector<block> B(numTriples / 128);
-            std::vector<block> C(numTriples / 128);
-
-            coproto::sync_wait(tripleGen.expand(A, B, C, prng, socket[1]));
-
-            u8 *ai = reinterpret_cast<uint8_t *>(A.data());
-            u8 *bi = reinterpret_cast<uint8_t *>(B.data());
-            u8 *ci = reinterpret_cast<uint8_t *>(C.data());
-            u8 *ei = new u8[numTriples];
-            u8 *fi = new u8[numTriples];
-            u8 *e = new u8[numTriples];
-            u8 *f = new u8[numTriples];
-
-            std::vector<block> tag_s_block(tag_s.size());
-            for (u64 i = 0; i < tag_s.size(); i++) {
-                tag_s_block[i] = block(tag_s[i], tag_s[i]);
-            }
+            auto tagBlocks = tagsToBlocks(tag_s);
             BitVector eqResBit;
-            ssPEQT(1, tag_s_block, eqResBit, socket[1], 1);
+            ssPEQT(1, tagBlocks, eqResBit, socket[1], 1);
+            auto eqRes = bitVectorToBytes(eqResBit);
 
-            std::vector<u8> eqRes(eqResBit.size());
-            for (u64 i = 0; i < eqResBit.size(); i++) {
-                eqRes[i] = (u8)eqResBit[i];
-            }
-
-            u8 *x;
-            u8 *y;
-            if (numTriples != eqRes.size()) {
-                x = new u8[numTriples];
-                y = new u8[numTriples];
-                std::memcpy(x, eqRes.data(), eqRes.size());
-                std::memcpy(y, resBits1.data(), resBits1.size());
-                for (u64 i = resBits1.size(); i < numTriples; i++) {
-                    x[i] = 0;
-                    y[i] = 0;
-                }
-            } else {
-                x = eqRes.data();
-                y = resBits1.data();
-            }
-
-            MillionaireProtocolSender::AND_step_1(ei, fi, x, y, ai, bi, numTriples);
-
-            coproto::sync_wait(socket[1].send(oc::span<u8>(ei, numTriples)));
-            coproto::sync_wait(socket[1].send(oc::span<u8>(fi, numTriples)));
-
-            coproto::sync_wait(socket[1].recv(oc::span<u8>(e, numTriples)));
-            coproto::sync_wait(socket[1].recv(oc::span<u8>(f, numTriples)));
-
-            for (u64 i = 0; i < numTriples; i++) {
-                e[i] ^= ei[i];
-                f[i] ^= fi[i];
-            }
-
-            u8 *andRes = new u8[numTriples];
-            MillionaireProtocolSender::AND_step_2(andRes, e, f, ei, fi, ai, bi, ci, numTriples);
-
-            andRes1.resize(eqRes.size());
-            for (u64 i = 0; i < eqRes.size(); i++) {
-                andRes1[i] = andRes[i];
-            }
-
-            delete[] ei;
-            delete[] fi;
-            delete[] e;
-            delete[] f;
-            delete[] andRes;
-            if (numTriples != eqRes.size()) {
-                delete[] x;
-                delete[] y;
-            }
+            AndSender sender(resBits0.size(), &socket[1]);
+            sender.andBits(eqRes, resBits1, andRes1);
         });
 
         std::thread andRecvThr([&]() {
-            PRNG prng(sysRandomSeed());
-            SilentOtTriple tripleGen;
-            u64 numTriples = roundUpTo(resBits0.size(), 128);
-            tripleGen.init(0, numTriples);
-            coproto::sync_wait(tripleGen.genBaseOts(prng, socket[0]));
-
-            std::vector<block> A(numTriples / 128);
-            std::vector<block> B(numTriples / 128);
-            std::vector<block> C(numTriples / 128);
-
-            coproto::sync_wait(tripleGen.expand(A, B, C, prng, socket[0]));
-
-            u8 *ai = reinterpret_cast<uint8_t *>(A.data());
-            u8 *bi = reinterpret_cast<uint8_t *>(B.data());
-            u8 *ci = reinterpret_cast<uint8_t *>(C.data());
-            u8 *ei = new u8[numTriples];
-            u8 *fi = new u8[numTriples];
-            u8 *e = new u8[numTriples];
-            u8 *f = new u8[numTriples];
-
-            std::vector<block> tag_r_block(tag_r.size());
-            for (u64 i = 0; i < tag_r.size(); i++) {
-                tag_r_block[i] = block(tag_r[i], tag_r[i]);
-            }
+            auto tagBlocks = tagsToBlocks(tag_r);
             BitVector eqResBit;
-            ssPEQT(0, tag_r_block, eqResBit, socket[0], 1);
+            ssPEQT(0, tagBlocks, eqResBit, socket[0], 1);
+            auto eqRes = bitVectorToBytes(eqResBit);
 
-            std::vector<u8> eqRes(eqResBit.size());
-            for (u64 i = 0; i < eqResBit.size(); i++) {
-                eqRes[i] = (u8)eqResBit[i];
-            }
-
-            u8 *x;
-            u8 *y;
-            if (numTriples != eqRes.size()) {
-                x = new u8[numTriples];
-                y = new u8[numTriples];
-                std::memcpy(x, eqRes.data(), eqRes.size());
-                std::memcpy(y, resBits0.data(), resBits0.size());
-                for (u64 i = resBits0.size(); i < numTriples; i++) {
-                    x[i] = 0;
-                    y[i] = 0;
-                }
-            } else {
-                x = eqRes.data();
-                y = resBits0.data();
-            }
-
-            MillionaireProtocolRecver::AND_step_1(ei, fi, x, y, ai, bi, numTriples);
-
-            coproto::sync_wait(socket[0].send(oc::span<u8>(ei, numTriples)));
-            coproto::sync_wait(socket[0].send(oc::span<u8>(fi, numTriples)));
-
-            coproto::sync_wait(socket[0].recv(oc::span<u8>(e, numTriples)));
-            coproto::sync_wait(socket[0].recv(oc::span<u8>(f, numTriples)));
-
-            for (u64 i = 0; i < numTriples; i++) {
-                e[i] ^= ei[i];
-                f[i] ^= fi[i];
-            }
-
-            u8 *andRes = new u8[numTriples];
-            MillionaireProtocolRecver::AND_step_2(andRes, e, f, ei, fi, ai, bi, ci, numTriples);
-
-            andRes0.resize(eqRes.size());
-            for (u64 i = 0; i < eqRes.size(); i++) {
-                andRes0[i] = andRes[i];
-            }
-
-            delete[] ei;
-            delete[] fi;
-            delete[] e;
-            delete[] f;
-            delete[] andRes;
-            if (numTriples != eqRes.size()) {
-                delete[] x;
-                delete[] y;
-            }
+            AndRecver recver(resBits0.size(), &socket[0]);
+            recver.andBits(eqRes, resBits0, andRes0);
         });
 
         andSendThr.join();
@@ -1005,7 +697,6 @@ void normL2(
 {
     u64 delta_p = delta * delta;
     int bitsLen = bytesLen * 8;
-    int extBitsLen = 2 * bitsLen + static_cast<int>(std::ceil(std::log2(d)));
 
     u64 mask = (1ull << bitsLen) - 1;
 
