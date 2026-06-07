@@ -139,7 +139,7 @@ This project builds on the following open-source libraries and research codebase
 If you make use of our work, please consider citing us:
 
 ```bibtex
-@inproceedings{hao2026scalable,
+@INPROCEEDINGS {
     author = {Hao, Meng and Yang, Xinpeng and Chen, Hanxiao and Zhang, Tianwei and Xue, Haiyang and Yang, Guomin and Li, Hongwei and Deng, Robert H.},
     title = {{Towards Scalable Fuzzy PSI via Efficient Fuzzy Matching}},
     booktitle = {Proceedings of the 2026 ACM SIGSAC Conference on Computer and Communications Security (CCS)},

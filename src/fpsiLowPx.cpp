@@ -2,6 +2,7 @@
 #include <coproto/Socket/AsioSocket.h>
 #include <cryptoTools/Common/BitVector.h>
 #include <cryptoTools/Common/CuckooIndex.h>
+#include <format>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <thread>
@@ -146,7 +147,7 @@ void fpsiLowLpPx(const oc::CLP &cmd)
         if (lp == 0) {
             averageDiff = delta;
         } else if (lp == 1) {
-            averageDiff = floor(delta / d);
+            averageDiff = floor(delta * 1.0 / d);
         } else if (lp == 2) {
             averageDiff = floor(delta / std::sqrt(d));
         }
@@ -464,6 +465,9 @@ void fpsiLowLpPx(const oc::CLP &cmd)
         std::cout << time << std::endl;
     }
 
-    std::cout << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / double(numTry) / 1024 / 1024 << " MB" << std::endl;
-    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() * 1.0 / double(numTry) / double(1000 * 1000) << " seconds" << std::endl;
+    double comm = (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / double(numTry) / 1024 / 1024;
+    double comp = std::chrono::duration_cast<std::chrono::microseconds>(e - s).count() * 1.0 / double(numTry) / double(1000 * 1000);
+    const char *metric = lp == 0 ? "L0" : (lp == 1 ? "L1" : "L2");
+
+    std::cout << std::format("[ours]    {:<2}    {:^5}  {:^5}  {:^5}  {:^10.3f} {:^10.3f}", metric, d, delta, n, comm, comp) << std::endl;
 }
