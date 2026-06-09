@@ -1,4 +1,6 @@
-mkdir -p thirdparty
+apt update
+apt install -y build-essential cmake git libtool iproute2 python3 sudo nasm libssl-dev libgmp-dev wget libfmt-dev
+
 cd thirdparty
 
 ## Build volePSI (We have included the modified version of volePSI in the thirdparty folder, so you can skip this step.)
