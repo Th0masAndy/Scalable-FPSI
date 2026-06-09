@@ -23,3 +23,5 @@ cmake -S c -B c/build -DCMAKE_INSTALL_PREFIX=../out/install
 cmake --build c/build --target install -j
 cd ..
 rm -rf BLAKE3
+
+cd ..
