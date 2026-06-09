@@ -68,15 +68,14 @@ The first flag selects the protocol variant. Flags use a leading dash, for examp
 
 | Flag | Meaning | Values / Notes |
 |---|---|---|
-| `-low` | Run the low-dimensional/main FPSI framework | Dispatches to `fpsiLowLpPx` in the current code |
-| `-high` | Run the high-dimensional FPSI framework | Uses `fpsiHighPx` when `-p 0`, otherwise `fpsiHighLpPx` |
-| `-bp25low` | Run the low-dimensional BP25-style baseline | Uses `bp25LowPx` when `-p 0`, otherwise `bp25LowLpPx` |
-| `-bp25high` | Run the high-dimensional BP25-style baseline | Uses `bp25High` when `-p 0`, otherwise `bp25HighLp` |
-| `-n` | Input set size | Overrides `-nn`; default is `1 << nn` |
+| `-low` | Run the low-dimensional FPSI  | Uses `fpsiLowLpPx` for unified framework |
+| `-high` | Run the high-dimensional FPSI  | Uses `fpsiHighPx` when `-p 0`, otherwise `fpsiHighLpPx` |
+| `-bp25low` | Run the low-dimensional BP25 baseline | Uses `bp25LowPx` when `-p 0`, otherwise `bp25LowLpPx` |
+| `-bp25high` | Run the high-dimensional BP25 baseline | Uses `bp25High` when `-p 0`, otherwise `bp25HighLp` |
 | `-nn` | log2 of input set size | default `10` |
 | `-d` | Dimension | default `2` |
 | `-delta` | Distance threshold | default `2` |
-| `-p` | Distance mode for LP variants | `0`: L-infinity-style path, `1`: L1, `2`: L2 where supported |
+| `-p` | Distance metric | `0`: L-infinity, `1`: L1, `2`: L2 where supported |
 | `-try` | Number of repeated runs | default `1` |
 | `-v` | Verbose timing / match output | `0`: off, `1`: on |
 
