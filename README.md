@@ -88,26 +88,26 @@ Build first, then run from the build directory or use `./build/fpsi` from the re
 Run the high-dimensional default variant:
 
 ```bash
-./build/fpsi -high -nn 10 -d 2 -delta 2 -try 1
+./build/fpsi -high -nn 12 -d 2 -delta 16 -try 1
 ```
 
 Run the high-dimensional L2 path:
 
 ```bash
-./build/fpsi -high -p 2 -nn 10 -d 2 -delta 2 -try 1
+./build/fpsi -high -p 2 -nn 12 -d 2 -delta 16 -try 1
 ```
 
 Run the low-dimensional framework with verbose output:
 
 ```bash
-./build/fpsi -low -p 2 -nn 8 -d 2 -delta 2 -v 1
+./build/fpsi -low -p 2 -nn 12 -d 2 -delta 16 -v 1
 ```
 
 Run baseline variants:
 
 ```bash
-./build/fpsi -bp25low -nn 8 -d 2 -delta 2
-./build/fpsi -bp25high -p 2 -nn 8 -d 2 -delta 2
+./build/fpsi -bp25low -nn 12 -d 2 -delta 16
+./build/fpsi -bp25high -p 2 -nn 12 -d 2 -delta 16
 ```
 
 ------------------------------------------------------------------------
