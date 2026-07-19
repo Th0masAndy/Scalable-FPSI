@@ -13,6 +13,8 @@ const std::map<int, oc::u64> prefixNumMap = {
 };
 
 const std::map<int, std::vector<oc::u64>> prefixLenMapNaive = {
+    { 4, { 0, 1, 2 } },
+    { 8, { 0, 1, 2, 3 } },
     { 16, { 0, 1, 2, 3, 4 } },
     { 32, { 0, 1, 2, 3, 4, 5 } },
     { 64, { 0, 1, 2, 3, 4, 5, 6 } },
@@ -24,5 +26,5 @@ const std::map<int, std::vector<oc::u64>> prefixLenMapNaive = {
 };
 
 const std::map<int, oc::u64> prefixNumMapNaive = {
-    { 16, 5 }, { 32, 6 }, { 64, 7 }, { 128, 8 }, { 256, 9 }, { 512, 10 }, { 1024, 11 }, { 2048, 12 },
+    { 4, 3 }, { 8, 4 }, { 16, 5 }, { 32, 6 }, { 64, 7 }, { 128, 8 }, { 256, 9 }, { 512, 10 }, { 1024, 11 }, { 2048, 12 },
 };
