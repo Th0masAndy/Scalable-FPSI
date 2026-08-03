@@ -11,12 +11,11 @@ This repository provides a research implementation of fuzzy private set intersec
 - `src/bp25Px.cpp` and `src/bp25High.cpp` implement baseline variants used for comparison.
 - `src/opprf.cpp`, `src/cmp.cpp`, `src/eq.cpp`, `src/mul.cpp`, `src/mux.cpp`, and `src/permute.cpp` contain reusable building blocks such as OPPRF, comparison, equality test, multiplication, mux, and permutation routines.
 - `include/*.h` contains the corresponding public declarations, shared parameters, and utility functions.
-- `test/opprf_test.cpp` contains standalone test helpers for OPPRF and comparison components; it is not currently wired into `CMakeLists.txt`.
 
 ## Requirements
 
 - Linux on **AMD64/x86_64**. The CMake target enables AES/PCLMUL/SSE flags on x86 systems.
-- A C++20 compiler, CMake, Make, Git, and Python 3.
+- GCC 13 or later (required for C++20 `std::format` support), CMake, Make, Git, and Python 3.
 - Third-party libraries installed under `thirdparty/out/install` by [build.sh](./build.sh):
   - [volePSI](thirdparty/volepsi), including cryptoTools, libOTe, coproto, macoro, and sparsehash dependencies fetched by volePSI's build. (We slightly modified the source code of RsOpprf and RsOprf to enable large inputs)
   - [BLAKE3](https://github.com/BLAKE3-team/BLAKE3).
@@ -114,13 +113,19 @@ Run baseline variants:
 
 ## Baseline Implementations
 
-The repository includes [BP25](https://eprint.iacr.org/2025/911) baseline in `src/bp25Px.cpp` and `src/bp25High.cpp`.
+The repository includes our implementations for baseline [BP25](https://eprint.iacr.org/2025/911) and please refer to `src/bp25Px.cpp` and `src/bp25High.cpp`.
 
 The external artifact used for comparison: 
 
 ### Piske et al. 
 
 [Code](https://github.com/asu-crypto/daOT-fuzzyPSI) | [Paper](https://eprint.iacr.org/2025/996)
+
+------------------------------------------------------------------------
+
+## TODO
+
+- Support the L2 metric with set size $2^{18}$ and dimension 64 (`-p 2 -nn 18 -d 64`). Currently, the required triples exceed the maximum of a batch.
 
 ------------------------------------------------------------------------
 

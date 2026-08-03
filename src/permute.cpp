@@ -1,10 +1,15 @@
 #include "permute.h"
+#include <algorithm>
 #include <cstdint>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtReceiver.h>
 #include <libOTe/TwoChooseOne/Silent/SilentOtExtSender.h>
 #include <stack>
 
 using namespace oc;
+
+namespace {
+    constexpr u32 kSilentOtBatchSize = 1 << 20;
+}
 
 class WaksmanNetwork {
 public:
@@ -543,37 +548,32 @@ void senderROT(u32 numOTs, PRNG &prng, BitVector &send0, BitVector &send1, Socke
     send0.resize(numOTs);
     send1.resize(numOTs);
 
-    SilentOtExtSender sender;
-    sender.configure(numOTs, numThreads, 128);
+    for (u32 offset = 0; offset < numOTs;) {
+        const u32 batchSize = std::min(kSilentOtBatchSize, numOTs - offset);
 
-    // sender.configure(numOTs, 40, 1, SilentSecType::SemiHonest);
+        SilentOtExtSender sender;
+        sender.mMultType = MultType::Tungsten;
+        sender.configure(batchSize, 2, numThreads);
 
-    std::vector<std::array<block, 2>> sendMsg(numOTs); // Stores the sender output blocks.
+        std::vector<std::array<block, 2>> sendMsg(batchSize);
+        coproto::sync_wait(sender.genBaseOts(prng, chl));
+        coproto::sync_wait(sender.silentSend(sendMsg, prng, chl));
 
-    // coproto::sync_wait(sender.genBaseCors(std::nullopt, prng, chl, true));// Run base OT.
-    coproto::sync_wait(sender.genBaseOts(prng, chl)); // Run base OT.
-
-    coproto::sync_wait(sender.silentSend(sendMsg, prng, chl)); // Run silent OT.
-
-    for (u32 i = 0; i < numOTs; i++) {
-        const unsigned char *bytes = sendMsg[i][0].data();
-        bool bit = (bytes[0] >> 0) & 1;
-        send0[i] = bit;
-
-        bytes = sendMsg[i][1].data();
-        bit = (bytes[0] >> 0) & 1;
-        send1[i] = bit;
-    }
-    BitVector d;
-    d.resize(numOTs);
-
-    coproto::sync_wait(chl.recv(d));
-    for (u32 i = 0; i < numOTs; i++) {
-        if (d[i] == 1) {
-            send0[i] ^= send1[i];
-            send1[i] ^= send0[i];
-            send0[i] ^= send1[i];
+        for (u32 i = 0; i < batchSize; ++i) {
+            send0[offset + i] = sendMsg[i][0].get<u8>(0) & 1;
+            send1[offset + i] = sendMsg[i][1].get<u8>(0) & 1;
         }
+
+        BitVector correction(batchSize);
+        coproto::sync_wait(chl.recv(correction));
+        for (u32 i = 0; i < batchSize; ++i) {
+            if (correction[i]) {
+                const bool tmp = send0[offset + i];
+                send0[offset + i] = send1[offset + i];
+                send1[offset + i] = tmp;
+            }
+        }
+        offset += batchSize;
     }
 }
 
@@ -582,25 +582,31 @@ void receiverROT(u32 numOTs, PRNG &prng, BitVector &bitV, BitVector &recv, Socke
     // The protocol sender acts as the receiver in ROT.
     bitV.resize(numOTs);
     recv.resize(numOTs);
-    BitVector bitV0 = bitV;
-    SilentOtExtReceiver receiver;
-    receiver.configure(numOTs, numThreads, 128);
-    // receiver.configure(numOTs, 40, 1, SilentSecType::SemiHonest);
 
-    std::vector<block> recvMsg(numOTs); // Stores the receiver output blocks.
+    for (u32 offset = 0; offset < numOTs;) {
+        const u32 batchSize = std::min(kSilentOtBatchSize, numOTs - offset);
+        BitVector choices(batchSize);
+        for (u32 i = 0; i < batchSize; ++i) {
+            choices[i] = bitV[offset + i];
+        }
+        const BitVector requestedChoices = choices;
 
-    // coproto::sync_wait(receiver.genBaseCors(std::nullopt, prng, chl, true));// Run base OT.
-    coproto::sync_wait(receiver.genBaseOts(prng, chl));                                   // Run base OT.
-    coproto::sync_wait(receiver.silentReceive(bitV, recvMsg, prng, chl, OTType::Random)); // Run silent OT.
+        SilentOtExtReceiver receiver;
+        receiver.mMultType = MultType::Tungsten;
+        receiver.configure(batchSize, 2, numThreads);
 
-    for (u32 i = 0; i < numOTs; i++) {
-        const unsigned char *bytes = recvMsg[i].data();
-        bool bit = (bytes[0] >> 0) & 1;
-        recv[i] = bit;
+        std::vector<block> recvMsg(batchSize);
+        coproto::sync_wait(receiver.genBaseOts(prng, chl));
+        coproto::sync_wait(receiver.silentReceive(choices, recvMsg, prng, chl, OTType::Random));
+
+        for (u32 i = 0; i < batchSize; ++i) {
+            recv[offset + i] = recvMsg[i].get<u8>(0) & 1;
+        }
+
+        BitVector correction = choices ^ requestedChoices;
+        coproto::sync_wait(chl.send(correction));
+        offset += batchSize;
     }
-    BitVector diff = bitV ^ bitV0;
-    coproto::sync_wait(chl.send(diff));
-    bitV = bitV0;
 }
 
 void perm_cons(u8 nn, std::vector<u32> &in, std::vector<u32> pi, BitVector &switch_bit)

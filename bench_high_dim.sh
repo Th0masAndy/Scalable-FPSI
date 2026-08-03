@@ -1,5 +1,7 @@
 #! /bin/bash
 
+try_count="${1:-1}"
+
 metrics=(0 1 2)
 ns=(12 16 18)
 dims=(16 32 64)
@@ -15,7 +17,7 @@ for metric in "${metrics[@]}"; do
         if [[ "$metric" == "2" && "$n" == "18" && "$dim" == "64" ]]; then
           continue
         fi
-        ./build/fpsi -high -d $dim -delta $delta -nn $n -p $metric -try 1
+        ./build/fpsi -high -d $dim -delta $delta -nn $n -p $metric -try "$try_count"
       done
     done
   done
