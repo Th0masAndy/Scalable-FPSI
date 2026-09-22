@@ -17,9 +17,6 @@ public:
     oc::PRNG prng;
 
     void send(std::vector<block> &keys, std::vector<block> &values, coproto::Socket &chl);
-
-    void send(std::vector<block> encodings, coproto::Socket &chl); // support offline encodings
-    void encode(std::vector<block> &keys, std::vector<block> &values, std::vector<block> &encodings);
 };
 
 class OpprfRevcer : public volePSI::RsOpprfReceiver {

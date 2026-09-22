@@ -10,7 +10,6 @@
 #include "eq.h"
 #include "norm.h"
 #include "opprf.h"
-#include "params.h"
 #include "permute.h"
 #include "utils.h"
 
@@ -42,24 +41,6 @@ std::vector<u8> bitVectorToBytes(const oc::BitVector &bits)
     return out;
 }
 } // namespace
-
-void preProcessPrefix(std::vector<std::vector<u64>> &inputs, std::vector<block> &listKey, std::vector<block> &listVal, std::vector<block> &r_R, int delta)
-{
-    PRNG prng(oc::sysRandomSeed());
-    int d = inputs[0].size();
-    for (size_t i = 0; i < inputs.size(); i++) {
-        auto neighbors = neigh(inputs[i], delta);
-        for (int j = 0; j < d; j++) {
-            auto prefixes = getIntervalPrefixSet(inputs[i][j] - delta, inputs[i][j] + delta, prefixLenMapNaive.at(2 * delta));
-            for (auto prefix : prefixes) {
-                for (auto neighbor : neighbors) {
-                    listKey.push_back(blake3_hash(neighbor, j, prefix));
-                    listVal.push_back(r_R[i * d + j]);
-                }
-            }
-        }
-    }
-}
 
 void sampleData(std::vector<std::vector<u64>> &sendSet, std::vector<std::vector<u64>> &recvSet, int delta, u64 n, size_t d, PRNG &prng)
 {

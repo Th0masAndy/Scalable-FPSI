@@ -436,6 +436,9 @@ void MillionaireProtocolSender::traverse_and_compute_ANDs(
     assert(2 * counter_corr == num_triples_corr);
 #endif
 
+    // Temporary spans do not own ei/fi; queued sends must finish before cleanup.
+    coproto::sync_wait(chl.flush());
+
     // cleanup
     delete[] ei;
     delete[] fi;
@@ -845,6 +848,9 @@ void MillionaireProtocolRecver::traverse_and_compute_ANDs(
     assert(counter_std == num_triples_std);
     assert(2 * counter_corr == num_triples_corr);
 #endif
+
+    // Temporary spans do not own ei/fi; queued sends must finish before cleanup.
+    coproto::sync_wait(chl.flush());
 
     // cleanup
     delete[] ei;

@@ -12,15 +12,12 @@
 #include <emmintrin.h>
 #include <libOTe/TwoChooseOne/ConfigureCode.h>
 #include <stdexcept>
-#include <tuple>
 #include <vector>
 
 using u32 = oc::u32;
 using u64 = oc::u64;
 using u8 = oc::u8;
 using block = oc::block;
-
-std::tuple<std::vector<std::vector<u64>>, std::vector<std::vector<u64>>> genInputs(u64 n, u64 d);
 
 inline u64 low(oc::block &blk)
 {
@@ -209,24 +206,6 @@ inline std::vector<block> getPrefixSet(u64 x, std::vector<u64> U)
     return res;
 }
 
-inline u64 upBound(block prefix)
-{
-    u64 len = high(prefix);
-    u64 base = low(prefix);
-    u64 upper = (1 << len) - 1 + (base << len);
-
-    return upper;
-}
-
-inline u64 lowBound(block prefix)
-{
-    u64 len = high(prefix);
-    u64 base = low(prefix);
-    u64 lower = base << len;
-
-    return lower;
-}
-
 void inline Hash(std::vector<block> &input)
 {
     auto n8 = input.size() / 8 * 8;
@@ -253,25 +232,6 @@ void inline Hash(std::vector<block> &input)
         // input[i] = input[i] & mask;
         input[i] = oc::mAesFixedKey.hashBlock(input[i]);
     }
-}
-
-inline uint64_t combination(uint64_t n, uint64_t k)
-{
-    if (k > n)
-        return 0;
-    if (k == 0 || k == n)
-        return 1;
-
-    // C(n, k) = C(n, n-k)
-    if (k > n - k)
-        k = n - k;
-
-    uint64_t result = 1;
-    for (uint64_t i = 1; i <= k; ++i) {
-        result = result * (n - i + 1) / i;
-    }
-
-    return result;
 }
 
 inline std::vector<u64> cell(std::vector<u64> data, u64 sidelen)
@@ -305,21 +265,6 @@ inline block blake3_hash(const std::vector<u64> &cell, u64 dim, u64 val)
     blake3_hasher_init(&hasher);
 
     auto merge_val = block(dim, val);
-    blake3_hasher_update(&hasher, merge_val.data(), sizeof(block));
-    blake3_hasher_update(&hasher, cell.data(), cell.size() * sizeof(u64));
-
-    blake3_hasher_finalize(&hasher, hash_out.data(), 16);
-
-    return hash_out;
-}
-
-inline block blake3_hash(const std::vector<u64> &cell, u64 hash_id)
-{
-    blake3_hasher hasher;
-    block hash_out;
-    blake3_hasher_init(&hasher);
-
-    auto merge_val = block(0, hash_id);
     blake3_hasher_update(&hasher, merge_val.data(), sizeof(block));
     blake3_hasher_update(&hasher, cell.data(), cell.size() * sizeof(u64));
 
