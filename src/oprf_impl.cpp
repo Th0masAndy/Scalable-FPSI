@@ -1,7 +1,21 @@
-#include "RsOprf.h"
+// © 2022 Visa.
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+// documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+// permit persons to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+// Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+// WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+// Adapted from upstream volePSI/RsOprf.cpp (Visa MIT license above).
+#include "oprf_impl.h"
 
-namespace volePSI {
-    Proto RsOprfSender::send(u64 n, PRNG &prng, Socket &chl, u64 numThreads, bool reducedRounds)
+namespace fpsi {
+    Proto LargeOprfSender::send(u64 n, PRNG &prng, Socket &chl, u64 numThreads, bool reducedRounds)
     {
         auto ws = block{};
         auto hBuff = std::array<u8, 32>{};
@@ -14,11 +28,17 @@ namespace volePSI {
         auto fu = macoro::eager_task<void>{};
         auto recvIdx = u64{ 0 };
         auto fork = Socket{};
+        const auto chunkBlocks = detail::chunkElements(mChunkBytes, sizeof(block));
 
-        setTimePoint("RsOprfSender::send-begin");
+        if (!n || !mBinSize)
+            throw std::invalid_argument("OPRF requires nonempty inputs and a nonzero bin size");
+        detail::checkedBytes(n, sizeof(block));
+
+        setTimePoint("LargeOprfSender::send-begin");
         ws = prng.get();
 
         mPaxos.init(n, mBinSize, 3, mSsp, PaxosParam::GF128, oc::ZeroBlock);
+        detail::checkedBytes(mPaxos.size(), sizeof(block));
 
         mD = prng.get();
 
@@ -39,31 +59,40 @@ namespace volePSI {
         fu = genVole(prng, fork, reducedRounds) | macoro::make_eager();
 
         co_await (chl.recv(mPaxos.mSeed));
-        setTimePoint("RsOprfSender::recv-seed");
+        setTimePoint("LargeOprfSender::recv-seed");
         co_await (fu);
         mB = mVoleSender.mB;
-        setTimePoint("RsOprfSender::send-vole");
+        setTimePoint("LargeOprfSender::send-vole");
 
         if (mMalicious) {
             co_await (chl.recv(mW));
             co_await (chl.send(std::move(ws)));
             mW = mW ^ ws;
-            setTimePoint("RsOprfSender::recv-mal");
+            setTimePoint("LargeOprfSender::recv-mal");
         }
 
         pPtr.reset(new block[mPaxos.size()]);
         pp = span<block>(pPtr.get(), mPaxos.size());
 
-        setTimePoint("RsOprfSender::alloc ");
+        setTimePoint("LargeOprfSender::alloc ");
 
-        if (0) {
-            co_await (chl.recv(pp));
+        remB = mB;
 
-            setTimePoint("RsOprfSender::send-recv");
+        while (pp.size()) {
+            subPp = pp.subspan(0, std::min<u64>(pp.size(), chunkBlocks));
+            pp = pp.subspan(subPp.size());
+
+            subB = remB.subspan(0, subPp.size());
+            remB = remB.subspan(subPp.size());
+
+            setTimePoint("LargeOprfSender::pre*-" + std::to_string(recvIdx));
+            co_await chl.recv(subPp);
+            setTimePoint("LargeOprfSender::recv-" + std::to_string(recvIdx));
+
             {
-                auto main = mB.size() / 8 * 8;
-                auto b = mB.data();
-                auto p = pp.data();
+                auto main = subB.size() / 8 * 8;
+                auto b = subB.data();
+                auto p = subPp.data();
                 for (u64 i = 0; i < main; i += 8) {
                     b[0] = b[0] ^ mD.gf128Mul(p[0]);
                     b[1] = b[1] ^ mD.gf128Mul(p[1]);
@@ -78,67 +107,33 @@ namespace volePSI {
                     p += 8;
                 }
 
-                for (u64 i = main; i < mB.size(); ++i) {
-                    mB[i] = mB[i] ^ mD.gf128Mul(pp[i]);
+                for (u64 i = main; i < subB.size(); ++i, ++b, ++p) {
+                    *b = *b ^ mD.gf128Mul(*p);
                 }
             }
-            setTimePoint("RsOprfSender::send-gf128Mul");
-        } else {
-            remB = mB;
+            setTimePoint("LargeOprfSender::gf128Mul-" + std::to_string(recvIdx));
 
-            while (pp.size()) {
-                subPp = pp.subspan(0, std::min<u64>(pp.size(), 1 << 27));
-                pp = pp.subspan(subPp.size());
-
-                subB = remB.subspan(0, subPp.size());
-                remB = remB.subspan(subPp.size());
-
-                setTimePoint("RsOprfSender::pre*-" + std::to_string(recvIdx));
-                co_await chl.recv(subPp);
-                setTimePoint("RsOprfSender::recv-" + std::to_string(recvIdx));
-
-                {
-                    auto main = subB.size() / 8 * 8;
-                    auto b = subB.data();
-                    auto p = subPp.data();
-                    for (u64 i = 0; i < main; i += 8) {
-                        b[0] = b[0] ^ mD.gf128Mul(p[0]);
-                        b[1] = b[1] ^ mD.gf128Mul(p[1]);
-                        b[2] = b[2] ^ mD.gf128Mul(p[2]);
-                        b[3] = b[3] ^ mD.gf128Mul(p[3]);
-                        b[4] = b[4] ^ mD.gf128Mul(p[4]);
-                        b[5] = b[5] ^ mD.gf128Mul(p[5]);
-                        b[6] = b[6] ^ mD.gf128Mul(p[6]);
-                        b[7] = b[7] ^ mD.gf128Mul(p[7]);
-
-                        b += 8;
-                        p += 8;
-                    }
-
-                    for (u64 i = main; i < subB.size(); ++i, ++b, ++p) {
-                        *b = *b ^ mD.gf128Mul(*p);
-                    }
-                }
-                setTimePoint("RsOprfSender::gf128Mul-" + std::to_string(recvIdx));
-
-                ++recvIdx;
-            }
+            ++recvIdx;
         }
     }
 
-    block RsOprfSender::eval(block v)
+    block LargeOprfSender::eval(block v)
     {
         block o;
         eval({ &v, 1 }, { &o, 1 }, 1);
         return o;
     }
-    void RsOprfSender::eval(span<const block> val, span<block> output, u64 numThreads)
+    void LargeOprfSender::eval(span<const block> val, span<block> output, u64 numThreads)
     {
-        setTimePoint("RsOprfSender::eval-begin");
+        if (val.size() != output.size() || mB.empty())
+            throw std::invalid_argument("OPRF eval requires initialized state and matching output size");
+        if (val.empty())
+            return;
+        setTimePoint("LargeOprfSender::eval-begin");
 
         mPaxos.decode<block>(val, output, mB, numThreads);
 
-        setTimePoint("RsOprfSender::eval-decode");
+        setTimePoint("LargeOprfSender::eval-decode");
 
         auto main = val.size() / 8 * 8;
         auto o = output.data();
@@ -210,10 +205,10 @@ namespace volePSI {
             }
         }
 
-        setTimePoint("RsOprfSender::eval-hash");
+        setTimePoint("LargeOprfSender::eval-hash");
     }
 
-    Proto RsOprfSender::genVole(PRNG &prng, Socket &chl, bool reduceRounds)
+    Proto LargeOprfSender::genVole(PRNG &prng, Socket &chl, bool reduceRounds)
     {
         if (reduceRounds)
             mVoleSender.configure(mPaxos.size(), oc::SilentBaseType::Base);
@@ -221,17 +216,7 @@ namespace volePSI {
         return mVoleSender.silentSendInplace(mD, mPaxos.size(), prng, chl);
     }
 
-    struct UninitVec : span<block> {
-        std::unique_ptr<block[]> ptr;
-
-        void resize(u64 s)
-        {
-            ptr.reset(new block[s]);
-            static_cast<span<block> &>(*this) = span<block>(ptr.get(), s);
-        }
-    };
-
-    Proto RsOprfReceiver::receive(span<const block> values, span<block> outputs, PRNG &prng, Socket &chl, u64 numThreads, bool reducedRounds)
+    Proto LargeOprfReceiver::receive(span<const block> values, span<block> outputs, PRNG &prng, Socket &chl, u64 numThreads, bool reducedRounds)
     {
         auto hashingSeed = block{};
         auto wr = block{};
@@ -240,23 +225,27 @@ namespace volePSI {
         auto paxos = Baxos{};
         auto hPtr = std::unique_ptr<block[]>{};
         auto h = span<block>{};
-        auto p = UninitVec{};
+        auto pOwner = std::shared_ptr<oc::AlignedUnVector<block>>{};
+        auto p = span<block>{};
         auto subP = span<block>{};
         auto subC = span<block>{};
         auto a = span<block>{};
         auto c = span<block>{};
         auto fu = macoro::eager_task<void>{};
-        auto ii = u64{ 0 };
+        auto offset = u64{ 0 };
         auto fork = Socket{};
+        const auto chunkBlocks = detail::chunkElements(mChunkBytes, sizeof(block));
 
-        setTimePoint("RsOprfReceiver::receive-begin");
+        setTimePoint("LargeOprfReceiver::receive-begin");
 
-        if (values.size() != outputs.size())
-            throw RTE_LOC;
+        if (values.empty() || values.size() != outputs.size() || !mBinSize)
+            throw std::invalid_argument("OPRF requires nonempty inputs, matching outputs and a nonzero bin size");
+        detail::checkedBytes(values.size(), sizeof(block));
 
         hashingSeed = prng.get(), wr = prng.get();
         paxos.mDebug = mDebug;
         paxos.init(values.size(), mBinSize, 3, mSsp, PaxosParam::GF128, hashingSeed);
+        detail::checkedBytes(paxos.size(), sizeof(block));
 
         co_await (chl.send(std::move(hashingSeed)));
 
@@ -275,36 +264,39 @@ namespace volePSI {
         h = span<block>(hPtr.get(), values.size());
 
         oc::mAesFixedKey.hashBlocks(values, h);
-        setTimePoint("RsOprfReceiver::receive-hash");
+        setTimePoint("LargeOprfReceiver::receive-hash");
 
-        // auto pPtr = std::make_shared<std::vector<block>>(paxos.size());
-        // span<block> p = *pPtr;
+        pOwner = std::make_shared<oc::AlignedUnVector<block>>(paxos.size());
+        p = { pOwner->data(), pOwner->size() };
 
-        p.resize(paxos.size());
-
-        setTimePoint("RsOprfReceiver::receive-alloc");
+        setTimePoint("LargeOprfReceiver::receive-alloc");
 
         paxos.solve<block>(values, h, p, nullptr, numThreads);
-        setTimePoint("RsOprfReceiver::receive-solve");
+        // Hashed inputs are no longer needed. In particular, do not retain
+        // this O(n) allocation while waiting for VOLE or queued sends.
+        h = {};
+        hPtr.reset();
+        setTimePoint("LargeOprfReceiver::receive-solve");
         co_await (fu);
 
         // a + b  = c * d
         a = mVoleRecver.mA;
         c = mVoleRecver.mC;
 
-        setTimePoint("RsOprfReceiver::receive-vole");
+        setTimePoint("LargeOprfReceiver::receive-vole");
 
         if (mMalicious) {
             co_await (chl.send(std::move(wr)));
         }
 
-        // if (numThreads > 1)
-        //     thrd.join();
-        if (0) {
+        while (offset < p.size()) {
+            subP = p.subspan(offset, std::min<u64>(p.size() - offset, chunkBlocks));
+            subC = c.subspan(offset, subP.size());
+
             {
-                auto main = (p.size() / 8) * 8;
-                block *__restrict pp = p.data();
-                block *__restrict cc = c.data();
+                auto main = (subP.size() / 8) * 8;
+                block *__restrict pp = subP.data();
+                block *__restrict cc = subC.data();
                 for (u64 i = 0; i < main; i += 8) {
                     pp[0] = pp[0] ^ cc[0];
                     pp[1] = pp[1] ^ cc[1];
@@ -318,62 +310,28 @@ namespace volePSI {
                     pp += 8;
                     cc += 8;
                 }
-                for (u64 i = main; i < p.size(); ++i)
-                    p[i] = p[i] ^ c[i];
+                for (u64 i = main; i < subP.size(); ++i, ++pp, ++cc)
+                    *pp = *pp ^ *cc;
             }
 
-            setTimePoint("RsOprfReceiver::receive-xor");
+            setTimePoint("LargeOprfReceiver::receive-xor");
 
-            // send c ^ p
-            co_await (chl.send(std::move(p)));
-        } else {
-            ii = 0;
+            // Retain the allocation while queued sends overlap the next XOR.
+            co_await chl.send(detail::SharedSlice<block>{ pOwner, offset, subP.size() });
 
-            while (c.size()) {
-                subP = p.subspan(0, std::min<u64>(p.size(), 1 << 27));
-                subC = c.subspan(0, subP.size());
+            setTimePoint("LargeOprfReceiver::receive-send");
 
-                if (p.size() != subP.size())
-                    static_cast<span<block> &>(p) = p.subspan(subP.size());
-                c = c.subspan(subP.size());
-
-                {
-                    auto main = (subP.size() / 8) * 8;
-                    block *__restrict pp = subP.data();
-                    block *__restrict cc = subC.data();
-                    for (u64 i = 0; i < main; i += 8) {
-                        pp[0] = pp[0] ^ cc[0];
-                        pp[1] = pp[1] ^ cc[1];
-                        pp[2] = pp[2] ^ cc[2];
-                        pp[3] = pp[3] ^ cc[3];
-                        pp[4] = pp[4] ^ cc[4];
-                        pp[5] = pp[5] ^ cc[5];
-                        pp[6] = pp[6] ^ cc[6];
-                        pp[7] = pp[7] ^ cc[7];
-
-                        pp += 8;
-                        cc += 8;
-                    }
-                    for (u64 i = main; i < subP.size(); ++i, ++pp, ++cc)
-                        *pp = *pp ^ *cc;
-                }
-
-                setTimePoint("RsOprfReceiver::receive-xor");
-
-                if (p.size() != subP.size())
-                    co_await (chl.send(std::move(subP)));
-                else
-                    co_await (chl.send(std::move(p)));
-
-                setTimePoint("RsOprfReceiver::receive-send");
-
-                ++ii;
-            }
+            offset += subP.size();
         }
+        // Each queued slice owns its allocation. Drop the receiver's reference
+        // so the table can be reclaimed as soon as the final send completes.
+        subP = {};
+        p = {};
+        pOwner.reset();
 
         paxos.decode<block>(values, outputs, a, numThreads);
 
-        setTimePoint("RsOprfReceiver::receive-decode");
+        setTimePoint("LargeOprfReceiver::receive-decode");
 
         if (mMalicious) {
             co_await (chl.recv(ws));
@@ -432,14 +390,15 @@ namespace volePSI {
             oc::mAesFixedKey.hashBlocks(outputs, outputs);
         }
 
-        setTimePoint("RsOprfReceiver::receive-hash");
+        setTimePoint("LargeOprfReceiver::receive-hash");
+        co_await chl.flush();
     }
 
-    Proto RsOprfReceiver::genVole(u64 n, PRNG &prng, Socket &chl, bool reducedRounds)
+    Proto LargeOprfReceiver::genVole(u64 n, PRNG &prng, Socket &chl, bool reducedRounds)
     {
         if (reducedRounds)
             mVoleRecver.configure(n, oc::SilentBaseType::Base);
         return mVoleRecver.silentReceiveInplace(n, prng, chl);
     }
 
-} // namespace volePSI
+} // namespace fpsi

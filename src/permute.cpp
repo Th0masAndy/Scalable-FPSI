@@ -610,7 +610,8 @@ void Opermute1(u32 idx, BitVector &input, BitVector &output, std::vector<u32> &p
     std::vector<int32_t> pi1(pi.begin(), pi.end());
     Timer timer2;
     timer2.setTimePoint("start");
-    WaksmanNetwork network(pi1); // Generate the network from the random permutation. The sender uses it for routing; the receiver uses it for indicators: -1, 0, 1, 2.
+    WaksmanNetwork network(pi1); // Generate the network from the random permutation. The sender uses it for routing;
+                                 // the receiver uses it for indicators: -1, 0, 1, 2.
     auto switches = network.get_waksman_network();
     timer2.setTimePoint("alibaba");
     // std::cout << timer2 << std::endl;
@@ -768,7 +769,6 @@ void Opermute1(u32 idx, BitVector &input, BitVector &output, std::vector<u32> &p
                 input[start + 3] = input0[start + 3];
                 // input   = std::move(input0);
                 // std::swap(input, input0);
-
             } else if (group_size[i] == 3) {
                 // First layer.
                 if (bitV[nn_2layer + switch_start[i]] == 1) {
@@ -817,7 +817,6 @@ void Opermute1(u32 idx, BitVector &input, BitVector &output, std::vector<u32> &p
                 input[start + 2] = input0[start + 2];
                 // input   = std::move(input0);
                 // std::swap(input, input0);
-
             } else if (group_size[i] == 2) { // Modify the third-layer input directly, while d still needs to be modified in the middle layer.
                 if (bitV[nn_1layer + switch_start[i]] == 1) {
                     input0[start] = input[start + 1] ^ recv[nn_1layer + switch_start[i]] ^ d[nn_1layer + switch_start[i]];
@@ -873,7 +872,6 @@ void Opermute1(u32 idx, BitVector &input, BitVector &output, std::vector<u32> &p
             // std::swap(input, input0);
         }
         output = input;
-
     } else if (idx == 1) {
         // Run the ROT interaction.
         bool isSender = (idx == 1); // R is the OT sender.
@@ -901,11 +899,12 @@ void Opermute1(u32 idx, BitVector &input, BitVector &output, std::vector<u32> &p
 
             for (u32 j = 0; j < loog; j++) { // One subnetwork in a layer.
                 u32 half_group = group_size[j] / 2;
-                for (u32 k = 0; k < half_group; k++) {                                                                         // Element computation in the subnetwork.
-                    input0[start + k] = input[start + k * 2] ^ send0[switch_num_layer * i + switch_start[j] + k];              // u0 = x0 − r0,
+                for (u32 k = 0; k < half_group; k++) {                                                            // Element computation in the subnetwork.
+                    input0[start + k] = input[start + k * 2] ^ send0[switch_num_layer * i + switch_start[j] + k]; // u0 = x0 − r0,
                     input0[start + k + half_group] = input[start + k * 2] ^ send1[switch_num_layer * i + switch_start[j] + k]; // u1 = x0 − r1
                     d[switch_num_layer * i + switch_start[j] + k] = input[start + k * 2] ^ input[start + k * 2 + 1] ^
-                        send0[switch_num_layer * i + switch_start[j] + k] ^ send1[switch_num_layer * i + switch_start[j] + k]; // d = (x0 + x1) − (u0 + u1)
+                                                                    send0[switch_num_layer * i + switch_start[j] + k] ^
+                                                                    send1[switch_num_layer * i + switch_start[j] + k]; // d = (x0 + x1) − (u0 + u1)
                 }
                 if (group_size[j] % 2 == 1) {
                     input0[start + group_size[j] - 1] = input[start + group_size[j] - 1];
@@ -929,7 +928,8 @@ void Opermute1(u32 idx, BitVector &input, BitVector &output, std::vector<u32> &p
         start = 0;
         // cout<<"wuwuwu"<<endl;
 
-        // Compute the middle three layers. Remove the outer recursion and write this part in as much detail as possible.
+        // Compute the middle three layers. Remove the outer recursion and write this part in as much detail as
+        // possible.
         for (u32 i = 0; i < group_size.size(); i++) {
             u32 nn_2layer = switch_num_layer * (nn - 2);
             u32 nn_1layer = switch_num_layer * (nn - 1);
@@ -986,7 +986,6 @@ void Opermute1(u32 idx, BitVector &input, BitVector &output, std::vector<u32> &p
                 input[start + 3] = input0[start + 3];
                 // input   = std::move(input0);
                 // std::swap(input, input0);
-
             } else if (group_size[i] == 3) {
                 // First layer.
                 input0[start] = input[start] ^ send0[nn_2layer + switch_start[i]];
@@ -1023,7 +1022,6 @@ void Opermute1(u32 idx, BitVector &input, BitVector &output, std::vector<u32> &p
                 input[start + 2] = input0[start + 2];
                 // input   = std::move(input0);
                 // std::swap(input, input0);
-
             } else if (group_size[i] == 2) { // Modify the third-layer input directly, while d still needs to be modified in the middle layer.
                 input0[start] = input[start] ^ send0[nn_1layer + switch_start[i]];
                 input0[start + 1] = input[start] ^ send1[nn_1layer + switch_start[i]];
@@ -1060,7 +1058,7 @@ void Opermute1(u32 idx, BitVector &input, BitVector &output, std::vector<u32> &p
                     input0[start + 2 * k] = input[start + k] ^ send0[nn_1iswitchnum + switch_start[j] + k]; // u0 = x0 − r0,
                     input0[start + 2 * k + 1] = input[start + k] ^ send1[nn_1iswitchnum + switch_start[j] + k];
                     d[nn_1iswitchnum + switch_start[j] + k] = input[start + k] ^ input[start + k + (group_size[j] / 2)] ^
-                        send0[nn_1iswitchnum + switch_start[j] + k] ^ send1[nn_1iswitchnum + switch_start[j] + k];
+                                                              send0[nn_1iswitchnum + switch_start[j] + k] ^ send1[nn_1iswitchnum + switch_start[j] + k];
                 }
                 if (group_size[j] % 2 == 1) {
                     input0[start + group_size[j] - 1] = input[start + group_size[j] - 1];

@@ -100,13 +100,13 @@ void bp25HighLp(const oc::CLP &cmd)
     auto socket = coproto::AsioSocket::makePair();
 
     std::thread recvThr([&]() {
-        OpprfRevcer recver(n * d, n * d * (2 * delta + 1));
+        LargeOpprfRevcer recver(n * d, n * d * (2 * delta + 1));
         recver.setTimer(time);
         recver.recv(recvListKey, g, socket[0]);
     });
 
     std::thread sendThr([&]() {
-        OpprfSender sender(n * d, n * d * (2 * delta + 1));
+        LargeOpprfSender sender(n * d, n * d * (2 * delta + 1));
         sender.setTimer(time);
         sender.send(sendListKey, sendListVal, socket[1]);
     });
@@ -264,13 +264,13 @@ void bp25High(const oc::CLP &cmd)
     auto socket = coproto::AsioSocket::makePair();
 
     std::thread recvThr([&]() {
-        OpprfRevcer recver(n * d, n * d * (2 * delta + 1));
+        LargeOpprfRevcer recver(n * d, n * d * (2 * delta + 1));
         recver.setTimer(time);
         recver.recv(recvListKey, g, socket[0]);
     });
 
     std::thread sendThr([&]() {
-        OpprfSender sender(n * d, n * d * (2 * delta + 1));
+        LargeOpprfSender sender(n * d, n * d * (2 * delta + 1));
         sender.setTimer(time);
         sender.send(sendListKey, sendListVal, socket[1]);
     });

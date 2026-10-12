@@ -5,12 +5,12 @@
 #include <cryptoTools/Crypto/PRNG.h>
 #include <cstddef>
 #include <vector>
+#include "opprf_impl.h"
 #include "utils.h"
-#include "volePSI/RsOpprf.h"
 
-class OpprfSender : public volePSI::RsOpprfSender {
+class LargeOpprfSender : public fpsi::LargeOpprfSender {
 public:
-    OpprfSender(size_t _decodeSize, size_t _kvSize);
+    LargeOpprfSender(size_t _decodeSize, size_t _kvSize);
 
     size_t decodeSize;
     size_t kvSize;
@@ -19,9 +19,9 @@ public:
     void send(std::vector<block> &keys, std::vector<block> &values, coproto::Socket &chl);
 };
 
-class OpprfRevcer : public volePSI::RsOpprfReceiver {
+class LargeOpprfRevcer : public fpsi::LargeOpprfReceiver {
 public:
-    OpprfRevcer(size_t _decodeSize, size_t _kvSize);
+    LargeOpprfRevcer(size_t _decodeSize, size_t _kvSize);
 
     size_t decodeSize;
     size_t kvSize;

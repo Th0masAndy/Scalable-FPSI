@@ -1,18 +1,18 @@
 #include "norm.h"
+#include <stdexcept>
+#include <thread>
 #include "cmp.h"
 #include "mul.h"
 #include "mux.h"
-#include <stdexcept>
-#include <thread>
 
 namespace {
-u64 makeMask(int bitsLen)
-{
-    if (bitsLen <= 0 || bitsLen > 64) {
-        throw std::runtime_error("invalid norm bit length");
+    u64 makeMask(int bitsLen)
+    {
+        if (bitsLen <= 0 || bitsLen > 64) {
+            throw std::runtime_error("invalid norm bit length");
+        }
+        return bitsLen == 64 ? ~0ull : ((1ull << bitsLen) - 1);
     }
-    return bitsLen == 64 ? ~0ull : ((1ull << bitsLen) - 1);
-}
 } // namespace
 
 void normL0(

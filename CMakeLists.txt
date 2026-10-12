@@ -16,7 +16,7 @@ file(GLOB SOURCES src/*.cpp)
 
 add_executable(fpsi ${SOURCES})
 
-target_link_libraries(fpsi PRIVATE oc::cryptoTools oc::libOTe visa::volePSI visa::volePSI)
+target_link_libraries(fpsi PRIVATE oc::cryptoTools oc::libOTe visa::volePSI)
 target_link_libraries(fpsi PRIVATE ${CMAKE_SOURCE_DIR}/thirdparty/out/install/lib/libblake3.a)
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i.86")

@@ -59,8 +59,8 @@ private:
     SilentOtExtReceiver *mOt;
 };
 
-// this code is from opencheetah (https://github.com/Alibaba-Gemini-Lab/OpenCheetah) and replaced the OT module with libOTe
-// Cheetah's variant MillionaireProtocol when USE_CHEETAH=1
+// this code is from opencheetah (https://github.com/Alibaba-Gemini-Lab/OpenCheetah) and replaced the OT module with
+// libOTe Cheetah's variant MillionaireProtocol when USE_CHEETAH=1
 class MillionaireProtocolSender {
 public:
     NcoOTSender *otpack;

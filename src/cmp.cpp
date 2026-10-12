@@ -23,8 +23,9 @@
 //         for (int d = 0; d < numDigits; ++d) {
 //             u64 digit = (val >> (d * M)) & ((1 << M) - 1);
 //             for (u64 k = 0; k < (1 << M); ++k) {
-//                 leaf_messages_cmp[i * numDigits * (1 << M) + d * (1 << M) + k] = leaf_res_cmp[i * numDigits + d] ^ ((k < digit) ? 1 : 0);
-//                 leaf_messages_eq[i * numDigits * (1 << M) + d * (1 << M) + k] = leaf_res_eq[i * numDigits + d] ^ ((k == digit) ? 1 : 0);
+//                 leaf_messages_cmp[i * numDigits * (1 << M) + d * (1 << M) + k] = leaf_res_cmp[i * numDigits + d] ^
+//                 ((k < digit) ? 1 : 0); leaf_messages_eq[i * numDigits * (1 << M) + d * (1 << M) + k] = leaf_res_eq[i
+//                 * numDigits + d] ^ ((k == digit) ? 1 : 0);
 //             }
 //         }
 //     }
@@ -319,7 +320,6 @@ void MillionaireProtocolSender::traverse_and_compute_ANDs(
                     num_cmps);
                 counter_std++;
                 counter_combined++;
-
             } else {
                 AND_step_1(
                     ei + ((num_triples_std + 2 * counter_corr) * num_cmps) / 8,

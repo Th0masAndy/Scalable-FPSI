@@ -1,12 +1,26 @@
-#include "RsOpprf.h"
+// © 2022 Visa.
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+// documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+// permit persons to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+// Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+// WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+// Adapted from upstream volePSI/RsOpprf.cpp (Visa MIT license above).
+#include "opprf_impl.h"
 
-namespace volePSI {
-    void RsOpprfSender::oprfEval(span<const block> X, span<u8> out, span<const u8> add, u64 m, u64 numThreads)
+namespace fpsi {
+    void LargeOpprfSender::oprfEval(span<const block> X, span<u8> out, span<const u8> add, u64 m, u64 numThreads)
     {
         auto n = X.size();
-        auto nm = n * m;
+        auto nm = detail::checkedBytes(n, m);
 
-        if (out.size() < nm)
+        if (out.size() < nm || add.size() < nm)
             throw RTE_LOC;
 
         std::unique_ptr<u8[]> tempPtr;
@@ -14,7 +28,7 @@ namespace volePSI {
         if (m == sizeof(block) && !(out.data() == add.data()))
             oprfOutput = span<block>((block *)out.data(), n);
         else {
-            tempPtr.reset(new u8[n * sizeof(block)]);
+            tempPtr.reset(new u8[detail::checkedBytes(n, sizeof(block))]);
             oprfOutput = span<block>((block *)tempPtr.get(), n);
         }
 
@@ -41,7 +55,7 @@ namespace volePSI {
         }
     }
 
-    Proto RsOpprfSender::send(u64 recverSize, span<const block> X, MatrixView<u8> val, PRNG &prng, u64 numThreads, Socket &chl)
+    Proto LargeOpprfSender::send(u64 recverSize, span<const block> X, MatrixView<u8> val, PRNG &prng, u64 numThreads, Socket &chl)
     {
         auto n = u64{};
         auto m = u64{};
@@ -51,16 +65,19 @@ namespace volePSI {
         auto diffPtr = std::unique_ptr<u8[]>{};
         auto diffU8 = span<u8>{};
 
-        setTimePoint("RsOpprfSender::send begin");
+        setTimePoint("LargeOpprfSender::send begin");
         n = X.size();
         m = val.cols();
-        nm = n * m;
+        nm = detail::checkedBytes(n, m);
+        detail::checkedBytes(n, sizeof(block));
+        detail::checkedBytes(recverSize, sizeof(block));
+        detail::chunkElements(mChunkBytes, 1);
 
         if (val.rows() != n)
-            throw RTE_LOC;
+            throw std::invalid_argument("OPPRF key/value row counts differ");
 
-        if (!n || !m)
-            throw RTE_LOC;
+        if (!n || !m || !recverSize)
+            throw std::invalid_argument("OPPRF requires nonempty inputs and nonzero value width");
 
         hashingSeed = prng.get();
         co_await (chl.send(std::move(hashingSeed)));
@@ -82,9 +99,9 @@ namespace volePSI {
         oprfEval(X, diffU8, val, m, numThreads);
 
         mPaxosByteWidth = m;
-        mP.resize(mPaxos.size() * m);
+        mP.resize(detail::checkedBytes(mPaxos.size(), m));
 
-        setTimePoint("RsOpprfSender::send eval");
+        setTimePoint("LargeOpprfSender::send eval");
 
         if (m == 16) {
             // special case for block.
@@ -97,7 +114,10 @@ namespace volePSI {
             if ((u8 *)(mP.data() + mP.size()) > mP.data() + mP.size())
                 throw RTE_LOC;
 
-            mPaxos.solve<block>(X, diff, P, &prng, numThreads);
+            // Vendored Baxos shares this PRNG across encoding workers. Its
+            // state is not thread-safe, including direct GF128 backfill draws.
+            // Keep randomized encoding serial; other stages retain numThreads.
+            mPaxos.solve<block>(X, diff, P, &prng, 1);
         } else {
             // throw RTE_LOC;
             auto diff = MatrixView<u8>(diffPtr.get(), n, m);
@@ -109,38 +129,36 @@ namespace volePSI {
             if (mP.data() + mP.size() > mP.data() + mP.size())
                 throw RTE_LOC;
 
-            mPaxos.solve<u8>(X, diff, P, &prng, numThreads);
+            mPaxos.solve<u8>(X, diff, P, &prng, 1);
         }
         diffPtr.reset();
 
-        setTimePoint("RsOpprfSender::send paxos solve");
+        setTimePoint("LargeOpprfSender::send paxos solve");
 
-        u64 segment = std::min<u64>(mP.size(), 1 << 30);
-        u64 rem = mP.size();
-        auto spanP = span<u8>((u8 *)mP.data(), mP.size());
-        while (rem > 0) {
-            auto subP = spanP.subspan(0, segment);
-            rem -= segment;
-            if (rem != 0)
-                spanP = spanP.subspan(segment);
-            segment = std::min<u64>(spanP.size(), 1 << 30);
-            co_await (chl.send(subP));
+        for (u64 offset = 0; offset < mP.size();) {
+            auto count = std::min<u64>(mP.size() - offset, mChunkBytes);
+            auto subP = span<u8>(mP.data() + offset, count);
+            // A named lvalue send completes before this table can be reused.
+            co_await chl.send(subP);
+            offset += count;
         }
-        // co_await (chl.send(coproto::copy(mP)));
 
-        setTimePoint("RsOpprfSender::send end");
+        setTimePoint("LargeOpprfSender::send end");
     }
 
-    void RsOpprfSender::eval(span<const block> val, MatrixView<u8> output, u64 numThreads)
+    void LargeOpprfSender::eval(span<const block> val, MatrixView<u8> output, u64 numThreads)
     {
         auto m = output.cols();
 
-        if (mPaxosByteWidth != m)
-            throw RTE_LOC;
+        if (!m || mPaxosByteWidth != m || val.size() != output.rows())
+            throw std::invalid_argument("OPPRF eval output dimensions do not match initialized state");
+        detail::checkedBytes(output.rows(), m);
+        if (val.empty())
+            return;
 
         MatrixView<u8> P(mP.data(), mPaxos.size(), output.cols());
 
-        setTimePoint("RsOpprfSender::eval begin");
+        setTimePoint("LargeOpprfSender::eval begin");
         if (m == sizeof(block)) {
             // spacial case for block
             auto oo = span<block>((block *)output.data(), output.rows());
@@ -150,30 +168,34 @@ namespace volePSI {
             mPaxos.decode<u8>(val, output, P);
         }
 
-        setTimePoint("RsOpprfSender::eval paxos decode");
+        setTimePoint("LargeOpprfSender::eval paxos decode");
 
         // output +=  oprf(val)
         auto outU8 = span<u8>(output.data(), output.size());
         oprfEval(val, outU8, outU8, m, numThreads);
 
-        setTimePoint("RsOpprfSender::eval end");
+        setTimePoint("LargeOpprfSender::eval end");
     }
 
-    Proto RsOpprfReceiver::receive(u64 senderSize, span<const block> values, MatrixView<u8> outputs, PRNG &prng, u64 numThreads, Socket &chl)
+    Proto LargeOpprfReceiver::receive(u64 senderSize, span<const block> values, MatrixView<u8> outputs, PRNG &prng, u64 numThreads, Socket &chl)
     {
         auto n = u64{ 0 }, m = u64{ 0 };
         auto paxos = Baxos{};
         auto type = PaxosParam::Binary;
-        auto temp = BasicVector<block>{};
+        auto temp = oc::AlignedUnVector<block>{};
         auto oprfOutput = span<block>{};
         auto p = Matrix<u8>{};
 
-        setTimePoint("RsOpprfReceiver::receive begin");
+        setTimePoint("LargeOpprfReceiver::receive begin");
 
-        if (values.size() != outputs.rows())
-            throw RTE_LOC;
+        if (values.empty() || values.size() != outputs.rows() || !outputs.cols() || !senderSize)
+            throw std::invalid_argument("OPPRF requires nonempty inputs and matching output dimensions");
+        detail::chunkElements(mChunkBytes, 1);
         n = outputs.rows();
         m = outputs.cols();
+        detail::checkedBytes(n, m);
+        detail::checkedBytes(n, sizeof(block));
+        detail::checkedBytes(senderSize, sizeof(block));
 
         co_await chl.recv(paxos.mSeed);
         type = m % sizeof(block) ? PaxosParam::Binary : PaxosParam::GF128;
@@ -182,7 +204,10 @@ namespace volePSI {
         if (mTimer)
             mOprfReceiver.setTimer(*mTimer);
 
-        if (outputs.cols() >= sizeof(block)) {
+        auto endOffset = reinterpret_cast<std::uintptr_t>(outputs.data() + outputs.size()) % sizeof(block);
+        // Expansion proceeds forwards. An aligned tail scratch area is safe
+        // only if writing a row cannot overwrite the next unread OPRF block.
+        if (m >= sizeof(block) && m - sizeof(block) >= endOffset) {
             // reuse memory. extra logic to make sure oprfOutput is properly aligned.
             auto ptr = outputs.data() + outputs.size();
             auto offset = (u64)ptr % sizeof(block);
@@ -195,27 +220,22 @@ namespace volePSI {
             assert((void *)(oprfOutput.data() + oprfOutput.size()) <= (void *)(outputs.data() + outputs.size()));
         } else {
             temp.resize(n);
-            oprfOutput = temp;
+            oprfOutput = { temp.data(), temp.size() };
         }
 
         co_await mOprfReceiver.receive(values, oprfOutput, prng, chl, numThreads);
 
+        detail::checkedBytes(paxos.size(), m);
         p.resize(paxos.size(), m, oc::AllocType::Uninitialized);
 
-        u64 segment = std::min<u64>(p.size(), 1 << 30);
-        u64 rem = p.size();
-        auto spanP = span<u8>(p.data(), p.size());
-        while (rem > 0) {
-            auto subP = spanP.subspan(0, segment);
-            rem -= segment;
-            if (rem != 0)
-                spanP = spanP.subspan(segment);
-            segment = std::min<u64>(spanP.size(), 1 << 30);
+        for (u64 offset = 0; offset < p.size();) {
+            auto count = std::min<u64>(p.size() - offset, mChunkBytes);
+            auto subP = span<u8>(p.data() + offset, count);
             co_await chl.recv(subP);
+            offset += count;
         }
-        // co_await chl.recv(p);
 
-        setTimePoint("RsOpprfReceiver::receive recv");
+        setTimePoint("LargeOpprfReceiver::receive recv");
 
         if (m == sizeof(block)) {
             auto v = span<block>((block *)values.data(), n);
@@ -245,8 +265,8 @@ namespace volePSI {
         }
         temp = {};
 
-        setTimePoint("RsOpprfReceiver::receive end");
+        setTimePoint("LargeOpprfReceiver::receive end");
 
         co_return;
     }
-} // namespace volePSI
+} // namespace fpsi

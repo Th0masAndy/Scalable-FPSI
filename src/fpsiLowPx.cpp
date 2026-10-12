@@ -14,32 +14,32 @@
 #include "utils.h"
 
 using namespace volePSI;
+using oc::divCeil;
+using oc::log2ceil;
 using oc::PRNG;
 using oc::SilentOtExtReceiver;
 using oc::SilentOtExtSender;
-using oc::ZeroBlock;
-using oc::divCeil;
-using oc::log2ceil;
 using oc::sysRandomSeed;
+using oc::ZeroBlock;
 
 namespace {
-std::vector<block> tagsToBlocks(const std::vector<u64> &tags)
-{
-    std::vector<block> blocks(tags.size());
-    for (u64 i = 0; i < tags.size(); ++i) {
-        blocks[i] = block(tags[i], tags[i]);
+    std::vector<block> tagsToBlocks(const std::vector<u64> &tags)
+    {
+        std::vector<block> blocks(tags.size());
+        for (u64 i = 0; i < tags.size(); ++i) {
+            blocks[i] = block(tags[i], tags[i]);
+        }
+        return blocks;
     }
-    return blocks;
-}
 
-std::vector<u8> bitVectorToBytes(const oc::BitVector &bits)
-{
-    std::vector<u8> out(bits.size());
-    for (u64 i = 0; i < bits.size(); ++i) {
-        out[i] = static_cast<u8>(bits[i]);
+    std::vector<u8> bitVectorToBytes(const oc::BitVector &bits)
+    {
+        std::vector<u8> out(bits.size());
+        for (u64 i = 0; i < bits.size(); ++i) {
+            out[i] = static_cast<u8>(bits[i]);
+        }
+        return out;
     }
-    return out;
-}
 } // namespace
 
 void sampleData(std::vector<std::vector<u64>> &sendSet, std::vector<std::vector<u64>> &recvSet, int delta, u64 n, size_t d, PRNG &prng)
@@ -185,7 +185,7 @@ void fpsiLowLpPx(const oc::CLP &cmd)
 
             PRNG prng(sysRandomSeed());
 
-            RsOpprfReceiver recver;
+            fpsi::LargeOpprfReceiver recver;
             recver.setTimer(time);
             coproto::sync_wait(recver.receive(n * (1 << d) * 3, Tx, r, prng, 1, socket[1]));
 
@@ -269,7 +269,7 @@ void fpsiLowLpPx(const oc::CLP &cmd)
             }
             PRNG prng(sysRandomSeed());
 
-            RsOpprfSender sender;
+            fpsi::LargeOpprfSender sender;
             sender.setTimer(time);
             coproto::sync_wait(sender.send(numBins, Ty, Tv, prng, 1, socket[0]));
         });
@@ -279,10 +279,12 @@ void fpsiLowLpPx(const oc::CLP &cmd)
 
         auto t_matching = time.setTimePoint("matching done");
 
-        // std::cout << "matching time: " << std::chrono::duration_cast<std::chrono::microseconds>(t_matching - s).count() / double(1000 * 1000) << " seconds"
+        // std::cout << "matching time: " << std::chrono::duration_cast<std::chrono::microseconds>(t_matching -
+        // s).count() / double(1000 * 1000) << " seconds"
         //           << std::endl;
 
-        // std::cout << "comm after matching: " << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 / 1024 << " MB" << std::endl;
+        // std::cout << "comm after matching: " << (socket[0].bytesReceived() + socket[0].bytesSent()) * 1.0 / 1024 /
+        // 1024 << " MB" << std::endl;
 
         std::vector<u8> resBits0(x.size() / d, 0);
         std::vector<u8> resBits1(y.size() / d, 0);

@@ -10,6 +10,7 @@ This repository provides a research implementation of fuzzy private set intersec
 - `src/fpsiLowPx.cpp` and `src/fpsiHighPx.cpp` implement the main FPSI variants.
 - `src/bp25Px.cpp` and `src/bp25High.cpp` implement baseline variants used for comparison.
 - `src/opprf.cpp`, `src/cmp.cpp`, `src/eq.cpp`, `src/mul.cpp`, `src/mux.cpp`, and `src/permute.cpp` contain reusable building blocks such as OPPRF, comparison, equality test, multiplication, mux, and permutation routines.
+- `include/{oprf,opprf}_impl.h` and `src/{oprf,opprf}_impl.cpp` provide `fpsi::LargeOprfSender` / `fpsi::LargeOprfReceiver` and `fpsi::LargeOpprfSender` / `fpsi::LargeOpprfReceiver`, following volePSI's algorithms with bounded large-input messages. `include/opprf.h` and `src/opprf.cpp` provide the project's synchronous OPPRF wrappers.
 - `include/*.h` contains the corresponding public declarations, shared parameters, and utility functions.
 
 ## Requirements
@@ -17,8 +18,8 @@ This repository provides a research implementation of fuzzy private set intersec
 - Linux on **AMD64/x86_64**. The CMake target enables AES/PCLMUL/SSE flags on x86 systems.
 - GCC 13 or later (required for C++20 `std::format` support), CMake, Make, Git, and Python 3.
 - Third-party libraries installed under `thirdparty/out/install` by [build.sh](./build.sh):
-  - [volePSI](thirdparty/volepsi), including cryptoTools, libOTe, coproto, macoro, and sparsehash dependencies fetched by volePSI's build. (We slightly modified the source code of RsOpprf and RsOprf to enable large inputs)
-  - [BLAKE3](https://github.com/BLAKE3-team/BLAKE3).
+  - [volePSI](https://github.com/ladnir/volepsi)
+  - [BLAKE3](https://github.com/BLAKE3-team/BLAKE3)
 
 - **System packages commonly needed for local builds:**
 
@@ -26,12 +27,15 @@ This repository provides a research implementation of fuzzy private set intersec
 build-essential
 cmake
 git
+libtool
+iproute2
 python3
+sudo
 nasm
 libssl-dev
 libgmp-dev
-libtool
-pkg-config
+wget
+libfmt-dev
 ```
 
 ## Local build
@@ -48,7 +52,7 @@ cmake --build build -j
 # The executable will be located at ./build/fpsi
 ```
 
-`build.sh` clones fixed revisions of volePSI and BLAKE3, installs them into `thirdparty/out/install`, and removes the temporary source checkouts afterwards.
+`build.sh` runs system package installation, volePSI's `build.py` (which manages libOTe and other dependencies), then BLAKE3's CMake build. Sources are downloaded under `thirdparty/out/src` and dependencies are installed into `thirdparty/out/install`. The temporary BLAKE3 checkout is removed after installation.
 
 ## Docker (optional)
 

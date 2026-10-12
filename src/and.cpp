@@ -8,22 +8,20 @@
 using namespace oc;
 
 namespace {
-std::vector<u8> paddedBits(const std::vector<u8> &bits, u64 paddedSize)
-{
-    if (bits.size() > paddedSize) {
-        throw std::runtime_error("AND input is larger than padded size");
-    }
+    std::vector<u8> paddedBits(const std::vector<u8> &bits, u64 paddedSize)
+    {
+        if (bits.size() > paddedSize) {
+            throw std::runtime_error("AND input is larger than padded size");
+        }
 
-    std::vector<u8> out(paddedSize, 0);
-    std::copy(bits.begin(), bits.end(), out.begin());
-    return out;
-}
+        std::vector<u8> out(paddedSize, 0);
+        std::copy(bits.begin(), bits.end(), out.begin());
+        return out;
+    }
 } // namespace
 
-AndSender::AndSender(uint64_t num_, coproto::Socket *socket_)
-    : num(num_), socket(socket_)
-{
-}
+AndSender::AndSender(uint64_t num_, coproto::Socket *socket_) : num(num_), socket(socket_)
+{}
 
 void AndSender::andBits(std::vector<u8> &lhs, std::vector<u8> &rhs, std::vector<u8> &out)
 {
@@ -74,10 +72,8 @@ void AndSender::andBits(std::vector<u8> &lhs, std::vector<u8> &rhs, std::vector<
     out.assign(andRes.begin(), andRes.begin() + num);
 }
 
-AndRecver::AndRecver(uint64_t num_, coproto::Socket *socket_)
-    : num(num_), socket(socket_)
-{
-}
+AndRecver::AndRecver(uint64_t num_, coproto::Socket *socket_) : num(num_), socket(socket_)
+{}
 
 void AndRecver::andBits(std::vector<u8> &lhs, std::vector<u8> &rhs, std::vector<u8> &out)
 {
