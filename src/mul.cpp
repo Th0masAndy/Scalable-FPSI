@@ -1,12 +1,26 @@
 #include "mul.h"
+#include <algorithm>
+#include <stdexcept>
 #include "utils.h"
 
 using namespace osuCrypto;
 
+namespace {
+    // Bound both OT working memory and correction messages (at most 72 MiB).
+    constexpr u64 maxBatchOts = 1ull << 24;
+
+    void checkBitLength(int bitsLen)
+    {
+        if (bitsLen < 8 || bitsLen > 64 || bitsLen % 8 != 0) {
+            throw std::invalid_argument("multiplication requires a byte-aligned bit length between 8 and 64");
+        }
+    }
+} // namespace
+
 MulSender::MulSender(uint64_t num_, coproto::Socket *socket_, int bitsLen_) : num(num_), bitsLen(bitsLen_), socket(socket_)
 {
+    checkBitLength(bitsLen);
     sender = new osuCrypto::SilentOtExtSender();
-    sender->configure(num * bitsLen);
     sender->mMultType = type;
 
     prng = new PRNG(ZeroBlock);
@@ -20,40 +34,49 @@ MulSender::~MulSender()
 
 void MulSender::mul(std::vector<uint64_t> &inputs, std::vector<uint64_t> &val)
 {
-    coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
+    if (inputs.size() < num || val.size() < num) {
+        throw std::invalid_argument("multiplication input/output size is smaller than num");
+    }
 
-    u64 bytesLen = divCeil(bitsLen, 8);
-    u64 numOts = num * bitsLen;
-    std::vector<std::array<block, 2>> messages(numOts);
+    const u64 bytesLen = bitsLen / 8;
+    const u64 batchSize = maxBatchOts / bitsLen;
+    const u64 correctionBytes = 4 * bytesLen * (bytesLen + 1);
 
-    coproto::sync_wait(sender->send(messages, *prng, *socket));
+    for (u64 begin = 0; begin < num;) {
+        const u64 count = std::min(batchSize, num - begin);
+        const u64 numOts = count * bitsLen;
+        sender->configure(numOts);
+        coproto::sync_wait(sender->genSilentBaseOts(*prng, *socket));
 
-    std::vector<u64> correctMessages(numOts);
+        std::vector<std::array<block, 2>> messages(numOts);
+        coproto::sync_wait(sender->send(messages, *prng, *socket));
 
-    std::vector<u8> compressedBits;
+        std::vector<u8> compressedBits(count * correctionBytes);
+        u64 offset = 0;
 
-    for (int i = 0; i < numOts; i++) {
-        int shift = i % bitsLen;
+        for (u64 i = 0; i < numOts; i++) {
+            int shift = i % bitsLen;
+            const u64 index = begin + i / bitsLen;
 
-        u64 mask = low(messages[i][0]) + inputs[i / bitsLen];
-        correctMessages[i] = (low(messages[i][1]) ^ mask) << shift >> shift;
-        for (int j = 0; j < bytesLen - shift / 8; j++) {
-            compressedBits.push_back(static_cast<uint8_t>(correctMessages[i] >> (8 * j)) & 0xFF);
+            u64 mask = low(messages[i][0]) + inputs[index];
+            u64 correction = (low(messages[i][1]) ^ mask) << shift >> shift;
+            for (u64 j = 0; j < bytesLen - shift / 8; j++) {
+                compressedBits[offset++] = static_cast<u8>(correction >> (8 * j));
+            }
+            val[index] += 0 - ((low(messages[i][0]) << shift >> shift) << shift);
         }
-    }
 
-    for (int i = 0; i < numOts; i++) {
-        int shift = i % bitsLen;
-        val[i / bitsLen] += 0 - ((low(messages[i][0]) << shift >> shift) << shift);
+        coproto::sync_wait(socket->send(compressedBits));
+        // The queued send borrows compressedBits until flush completes.
+        coproto::sync_wait(socket->flush());
+        begin += count;
     }
-
-    coproto::sync_wait(socket->send(compressedBits));
 }
 
 MulRecver::MulRecver(uint64_t num_, coproto::Socket *socket_, int bitsLen_) : num(num_), bitsLen(bitsLen_), socket(socket_)
 {
+    checkBitLength(bitsLen);
     receiver = new osuCrypto::SilentOtExtReceiver();
-    receiver->configure(num * bitsLen);
     receiver->mMultType = type;
 
     prng = new PRNG(OneBlock);
@@ -67,42 +90,48 @@ MulRecver::~MulRecver()
 
 void MulRecver::mul(std::vector<uint64_t> &inputs, std::vector<uint64_t> &val)
 {
-    coproto::sync_wait(receiver->genSilentBaseOts(*prng, *socket));
-
-    u64 bytesLen = divCeil(bitsLen, 8);
-    u64 numOts = num * bitsLen;
-    std::vector<u8> bytes(numOts / 8);
-
-    for (int i = 0; i < num; i++) {
-        u64 lowbits = inputs[i];
-        for (int j = 0; j < bytesLen; j++) {
-            bytes[i * bytesLen + j] = (lowbits >> (8 * j)) & 0xFF;
-        }
+    if (inputs.size() < num || val.size() < num) {
+        throw std::invalid_argument("multiplication input/output size is smaller than num");
     }
 
-    std::vector<block> messages(numOts);
+    const u64 bytesLen = bitsLen / 8;
+    const u64 batchSize = maxBatchOts / bitsLen;
+    const u64 correctionBytes = 4 * bytesLen * (bytesLen + 1);
 
-    BitVector choiceBit(bytes.data(), numOts);
+    for (u64 begin = 0; begin < num;) {
+        const u64 count = std::min(batchSize, num - begin);
+        const u64 numOts = count * bitsLen;
+        receiver->configure(numOts);
+        coproto::sync_wait(receiver->genSilentBaseOts(*prng, *socket));
 
-    coproto::sync_wait(receiver->receive(choiceBit, messages, *prng, *socket));
-
-    std::vector<u64> correctMessages(numOts);
-
-    std::vector<u8> compressedBits;
-
-    coproto::sync_wait(socket->recvResize(compressedBits));
-
-    u64 offset = 0;
-    for (int i = 0; i < numOts; i++) {
-        u64 msg = 0;
-        int shift = i % bitsLen;
-        for (int j = 0; j < bytesLen - shift / 8; j++) {
-            msg |= u64(compressedBits[offset++]) << (8 * j);
+        BitVector choiceBit(numOts);
+        for (u64 i = 0; i < count; i++) {
+            u64 lowbits = inputs[begin + i];
+            for (u64 j = 0; j < bytesLen; j++) {
+                choiceBit.data()[i * bytesLen + j] = static_cast<u8>(lowbits >> (8 * j));
+            }
         }
-        if (choiceBit[i] & 1) {
-            val[i / bitsLen] += ((low(messages[i]) ^ msg) << shift >> shift) << (i % bitsLen);
-        } else {
-            val[i / bitsLen] += (low(messages[i]) << shift >> shift) << (i % bitsLen);
+
+        std::vector<block> messages(numOts);
+        coproto::sync_wait(receiver->receive(choiceBit, messages, *prng, *socket));
+
+        std::vector<u8> compressedBits(count * correctionBytes);
+        coproto::sync_wait(socket->recv(compressedBits));
+
+        u64 offset = 0;
+        for (u64 i = 0; i < numOts; i++) {
+            u64 msg = 0;
+            int shift = i % bitsLen;
+            const u64 index = begin + i / bitsLen;
+            for (u64 j = 0; j < bytesLen - shift / 8; j++) {
+                msg |= u64(compressedBits[offset++]) << (8 * j);
+            }
+            if (choiceBit[i] & 1) {
+                val[index] += ((low(messages[i]) ^ msg) << shift >> shift) << shift;
+            } else {
+                val[index] += (low(messages[i]) << shift >> shift) << shift;
+            }
         }
+        begin += count;
     }
 }

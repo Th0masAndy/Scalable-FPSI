@@ -7,12 +7,12 @@ using namespace oc;
 MuxSender::MuxSender(uint64_t num_, coproto::Socket *socket_) : num(num_), socket(socket_)
 {
     sender = new osuCrypto::SilentOtExtSender();
-    sender->configure(num);
     sender->mMultType = type;
+    sender->configure(num);
 
     recver = new osuCrypto::SilentOtExtReceiver();
-    recver->configure(num);
     recver->mMultType = type;
+    recver->configure(num);
 
     prng = new PRNG(ZeroBlock);
 }
@@ -106,12 +106,12 @@ void MuxSender::muxA(std::vector<u8> &choices, std::vector<u64> &v0, std::vector
 MuxRecver::MuxRecver(uint64_t num_, coproto::Socket *socket_) : num(num_), socket(socket_)
 {
     sender = new osuCrypto::SilentOtExtSender();
-    sender->configure(num);
     sender->mMultType = type;
+    sender->configure(num);
 
     recver = new osuCrypto::SilentOtExtReceiver();
-    recver->configure(num);
     recver->mMultType = type;
+    recver->configure(num);
 
     prng = new PRNG(OneBlock);
 }

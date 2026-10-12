@@ -127,12 +127,6 @@ The external artifact used for comparison:
 
 ------------------------------------------------------------------------
 
-## TODO
-
-- Support the L2 metric with set size $2^{18}$ and dimension 64 (`-p 2 -nn 18 -d 64`). Currently, the required triples exceed the maximum of a batch.
-
-------------------------------------------------------------------------
-
 ## Acknowledgements
 
 This project builds on the following open-source libraries and research codebases:

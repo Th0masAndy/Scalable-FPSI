@@ -14,9 +14,6 @@ for metric in "${metrics[@]}"; do
   for n in "${ns[@]}"; do
     for dim in "${dims[@]}"; do
       for delta in "${deltas[@]}"; do
-        if [[ "$metric" == "2" && "$n" == "18" && "$dim" == "64" ]]; then
-          continue
-        fi
         ./build/fpsi -high -d $dim -delta $delta -nn $n -p $metric -try "$try_count"
       done
     done
